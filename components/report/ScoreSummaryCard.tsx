@@ -1,28 +1,26 @@
 import React from "react";
-import { EvaluationRun } from "@/lib/types/evaluation";
+import { EvaluationPublicResponse } from "@/lib/types/evaluation";
 import { PerformanceBandBadge } from "@/components/ui/PerformanceBandBadge";
 import { formatPerformanceBand } from "@/lib/utils/formatters";
 import { User, Building2, Clock, FileText, Info } from "lucide-react";
 import { cn } from "@/lib/utils/cn";
 
 interface ScoreSummaryCardProps {
-  evaluation: EvaluationRun;
+  evaluation: EvaluationPublicResponse;
 }
 
 export function ScoreSummaryCard({ evaluation }: ScoreSummaryCardProps) {
-  const {
-    totalScore = 0,
-    maxPossible = 100,
-    normalizedScore = totalScore,
-    performanceBand,
-    metadata,
-    dimensions,
-  } = evaluation;
+  const result = evaluation.result;
+  if (!result) return null;
 
-  const isNormalized = maxPossible !== null && maxPossible !== 100;
-  const rawScore = totalScore ?? 0;
-  const rawMax = maxPossible ?? 100;
-  const displayScore = isNormalized ? normalizedScore ?? rawScore : rawScore;
+  const { rawScore, maxPossible, finalScore, performanceBand } =
+    result.scoreSummary;
+  const { metadata } = evaluation;
+  const { dimensions } = result;
+
+  const isNormalized = maxPossible !== 100;
+  const rawMax = maxPossible;
+  const displayScore = finalScore;
   const bandInfo = formatPerformanceBand(performanceBand);
 
   // Check if any dimension is disabled (e.g. D4 in coaching)

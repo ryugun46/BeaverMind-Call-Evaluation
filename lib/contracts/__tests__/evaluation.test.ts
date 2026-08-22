@@ -1,225 +1,179 @@
-/**
- * @file lib/contracts/__tests__/evaluation.test.ts
- *
- * Lightweight schema tests for the shared evaluation domain contract.
- * Uses Node's built-in test runner (node:test) + assert — zero extra deps.
- *
- * Run:  npm run test:contracts
- */
-
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 
 import {
-  EvaluationRunSchema,
-  EvaluationResultSchema,
+  CallTypeSchema,
   CreateEvaluationInputSchema,
   DimensionResultSchema,
+  EvaluationResultSchema,
+  EvaluationRunSchema,
   PerformanceBandSchema,
-  CallTypeSchema,
-} from "../../contracts/evaluation";
+} from "../evaluation";
+import { FIXTURE_EVALUATIONS } from "@/lib/fixtures/evaluation-fixtures";
+import { getRubricForCallType } from "@/lib/rubrics";
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Helpers
-// ─────────────────────────────────────────────────────────────────────────────
-
-/** Returns 12 valid active dimension stubs with sequential numbers. */
-function makeActiveDimensions(count = 12) {
-  return Array.from({ length: count }, (_, i) => ({
-    dimensionNumber: i + 1,
-    name: `Dimension ${i + 1}`,
-    score: 8,
-    maxScore: 10,
-    band: "STRONG" as const,
-    reasoning: "Well executed.",
-    evidence: [{ speaker: "Rep", quote: "This is a direct quote." }],
-    quickFix: null,
-  }));
-}
-
-/** Minimal valid queued run. */
-const validQueuedRun = {
-  id: "eval-queue-0001",
-  callType: "kickoff",
-  status: "queued",
-  createdAt: "2026-08-22T10:00:00Z",
-  result: null,
-  error: null,
+const validDimension = {
+  dimensionNumber: 1,
+  name: "Pre-Call Preparation",
+  score: 8,
+  maxScore: 10,
+  band: "STRONG" as const,
+  reasoning: "The behavior is visible in the transcript.",
+  evidence: [{ speaker: "Coach", quote: "I reviewed your intake." }],
+  quickFix: null,
+  disabled: false,
+  disabledReason: null,
 };
 
-/** Minimal valid EvaluationResult for a kickoff call. */
-const validKickoffResult = {
-  scoreSummary: {
-    rawScore: 84,
-    maxPossible: 100,
-    normalizedScore: 84,
-    finalScore: 84,
-    performanceBand: "STRONG" as const,
-  },
-  brief: "Strong kickoff call with good agenda framing and next-step clarity.",
-  oneThing: {
-    title: "Pre-send diagnostic form",
-    explanation: "Send the schema mapping form 48h before the next session.",
-    currentScore: 84,
-    potentialScore: 91,
-    affectedDimensionNumbers: [9],
-  },
-  redFlags: [],
-  appliedRules: [],
-  dimensions: makeActiveDimensions(12),
-};
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Tests
-// ─────────────────────────────────────────────────────────────────────────────
-
-describe("EvaluationRunSchema", () => {
-  it("1. accepts a valid queued run", () => {
-    const parsed = EvaluationRunSchema.safeParse(validQueuedRun);
-    assert.equal(parsed.success, true, "Queued run should be valid");
+describe("fixture contract integration", () => {
+  it("runtime-validates every lifecycle fixture", () => {
+    for (const [key, fixture] of Object.entries(FIXTURE_EVALUATIONS)) {
+      assert.equal(
+        EvaluationRunSchema.safeParse(fixture).success,
+        true,
+        `${key} must pass EvaluationRunSchema`
+      );
+    }
   });
 
-  it("5. rejects an invalid call type", () => {
-    const parsed = EvaluationRunSchema.safeParse({
-      ...validQueuedRun,
-      callType: "discovery", // not a valid CallType
-    });
-    assert.equal(parsed.success, false, "Invalid call type should be rejected");
-  });
-});
-
-describe("EvaluationResultSchema", () => {
-  it("2. accepts a valid completed kickoff result (12 active dimensions)", () => {
-    const parsed = EvaluationResultSchema.safeParse(validKickoffResult);
-    assert.equal(parsed.success, true, "Valid kickoff result should parse");
+  it("contains valid completed Kick-off, full Coaching, and disabled-D4 Coaching results", () => {
+    for (const key of ["kickoff-elite", "completed-coaching-full", "coaching-d4-disabled"]) {
+      const result = FIXTURE_EVALUATIONS[key].result;
+      assert.ok(result, `${key} must contain its authoritative result`);
+      assert.equal(EvaluationResultSchema.safeParse(result).success, true);
+    }
+    assert.equal(
+      FIXTURE_EVALUATIONS["coaching-d4-disabled"].result?.dimensions[3].score,
+      null
+    );
   });
 
-  it("3. accepts a valid completed coaching result with a disabled D4 dimension", () => {
-    const dims = makeActiveDimensions(12);
-    // Replace D4 with a disabled/N/A dimension
-    dims[3] = {
-      dimensionNumber: 4,
-      name: "Movement Coaching Quality",
-      score: null as unknown as number, // null is valid for disabled dims
-      maxScore: 15,
-      band: null as unknown as "STRONG",
-      reasoning: "Not applicable on this call.",
-      evidence: [],
-      quickFix: null,
-      disabled: true,
-      disabledReason: "No physical movement coaching conducted.",
-    } as typeof dims[0];
-
-    const coachingResult = {
-      ...validKickoffResult,
-      scoreSummary: {
-        rawScore: 71,
-        maxPossible: 85,
-        normalizedScore: 84,
-        finalScore: 84,
-        performanceBand: "STRONG" as const,
-      },
-      appliedRules: [
-        {
-          ruleId: "DIM_APPLICABILITY_NORMALIZATION",
-          label: "D4 Non-Applicability Normalization",
-          description: "D4 excluded; scored out of 85 and normalized to 100.",
-          scope: "applicability" as const,
-          affectedDimensionNumber: 4,
-          effect: "71 / 85 normalized to 84 / 100.",
-        },
-      ],
-      dimensions: dims,
-    };
-
-    const parsed = EvaluationResultSchema.safeParse(coachingResult);
-    assert.equal(parsed.success, true, "Coaching result with disabled D4 should parse");
-  });
-
-  it("4. accepts a disabled dimension with score: null", () => {
-    const disabledDim = {
-      dimensionNumber: 4,
-      name: "Movement Coaching Quality",
-      score: null,
-      maxScore: 15,
-      band: null,
-      reasoning: "Not applicable.",
-      evidence: [],
-      disabled: true,
-      disabledReason: "Physical coaching not conducted.",
-    };
-
-    const parsed = DimensionResultSchema.safeParse(disabledDim);
-    assert.equal(parsed.success, true, "Disabled dimension with score=null should be valid");
-  });
-
-  it("7. rejects a negative score on a dimension", () => {
-    const parsed = DimensionResultSchema.safeParse({
-      dimensionNumber: 1,
-      name: "Pre-Call Preparation",
-      score: -5, // invalid — must be nonnegative
-      maxScore: 10,
-      reasoning: "Some reasoning.",
-      evidence: [],
-    });
-    assert.equal(parsed.success, false, "Negative score should be rejected");
-  });
-
-  it("8. rejects an invalid performance band", () => {
-    const parsed = PerformanceBandSchema.safeParse("AVERAGE"); // not a valid band
-    assert.equal(parsed.success, false, "Invalid performance band should be rejected");
-  });
-
-  it("rejects result with wrong dimension count (not 12)", () => {
-    const result = {
-      ...validKickoffResult,
-      dimensions: makeActiveDimensions(11), // only 11 — should fail
-    };
-    const parsed = EvaluationResultSchema.safeParse(result);
-    assert.equal(parsed.success, false, "Result with 11 dimensions should be rejected");
+  it("keeps completed dimensions aligned with rubric names, maxima, buckets, and transcripts", () => {
+    for (const fixture of Object.values(FIXTURE_EVALUATIONS).filter(
+      (candidate) => candidate.status === "completed"
+    )) {
+      assert.ok(fixture.result);
+      const rubric = getRubricForCallType(fixture.callType);
+      fixture.result.dimensions.forEach((dimension, index) => {
+        const definition = rubric.dimensions[index];
+        assert.equal(dimension.dimensionNumber, definition.number);
+        assert.equal(dimension.name, definition.name);
+        assert.equal(dimension.maxScore, definition.maxScore);
+        if (!dimension.disabled && definition.scoring.mode === "discrete") {
+          assert.ok(definition.scoring.allowedScores.includes(dimension.score as number));
+        }
+        for (const evidence of dimension.evidence) {
+          assert.ok(
+            fixture.transcript.includes(evidence.quote),
+            `${fixture.id} D${dimension.dimensionNumber} evidence must be verbatim`
+          );
+        }
+      });
+    }
   });
 });
 
-describe("CreateEvaluationInputSchema", () => {
-  it("6. rejects an empty transcript", () => {
-    const parsed = CreateEvaluationInputSchema.safeParse({
-      callType: "kickoff",
-      transcript: "   ", // whitespace only — trims to empty string
-    });
-    assert.equal(parsed.success, false, "Whitespace-only transcript should be rejected");
+describe("DimensionResultSchema", () => {
+  it("accepts a valid Kick-off half-point score", () => {
+    assert.equal(
+      DimensionResultSchema.safeParse({
+        ...validDimension,
+        dimensionNumber: 3,
+        name: "Agenda Framing",
+        score: 4.5,
+        maxScore: 5,
+        band: "ELITE",
+      }).success,
+      true
+    );
   });
 
-  it("accepts a valid create input", () => {
-    const parsed = CreateEvaluationInputSchema.safeParse({
-      callType: "coaching",
-      transcript: "Coach: Great work today. Client: Thanks for the session.",
-    });
-    assert.equal(parsed.success, true, "Valid create input should be accepted");
+  it("rejects negative scores and scores above maxScore", () => {
+    assert.equal(DimensionResultSchema.safeParse({ ...validDimension, score: -0.5 }).success, false);
+    assert.equal(DimensionResultSchema.safeParse({ ...validDimension, score: 10.5 }).success, false);
   });
 
-  it("rejects an unsupported call type in create input", () => {
-    const parsed = CreateEvaluationInputSchema.safeParse({
-      callType: "discovery",
-      transcript: "Some valid transcript content.",
-    });
-    assert.equal(parsed.success, false, "Invalid call type in create input should be rejected");
+  it("requires disabled dimensions to use null score/band and a reason", () => {
+    assert.equal(
+      DimensionResultSchema.safeParse({
+        ...validDimension,
+        score: null,
+        band: null,
+        disabled: true,
+        disabledReason: "No movement coaching occurred.",
+        evidence: [],
+      }).success,
+      true
+    );
+    assert.equal(
+      DimensionResultSchema.safeParse({
+        ...validDimension,
+        score: 0,
+        band: null,
+        disabled: true,
+        disabledReason: "No movement coaching occurred.",
+      }).success,
+      false
+    );
+  });
+
+  it("rejects null scores on active dimensions", () => {
+    assert.equal(
+      DimensionResultSchema.safeParse({ ...validDimension, score: null }).success,
+      false
+    );
   });
 });
 
-describe("CallTypeSchema", () => {
-  it("accepts 'kickoff'", () => {
+describe("EvaluationRunSchema lifecycle", () => {
+  it("accepts the valid queued fixture", () => {
+    assert.equal(
+      EvaluationRunSchema.safeParse(FIXTURE_EVALUATIONS["queued-kickoff"]).success,
+      true
+    );
+  });
+
+  it("rejects completed runs without a result", () => {
+    const completed = FIXTURE_EVALUATIONS["kickoff-elite"];
+    assert.equal(EvaluationRunSchema.safeParse({ ...completed, result: null }).success, false);
+  });
+
+  it("rejects failed runs without a structured error", () => {
+    const failed = FIXTURE_EVALUATIONS["failed-kickoff"];
+    assert.equal(EvaluationRunSchema.safeParse({ ...failed, error: null }).success, false);
+  });
+
+  it("rejects invalid call types, non-UUID IDs, and missing rubric versions", () => {
+    const queued = FIXTURE_EVALUATIONS["queued-kickoff"];
+    assert.equal(EvaluationRunSchema.safeParse({ ...queued, callType: "discovery" }).success, false);
+    assert.equal(EvaluationRunSchema.safeParse({ ...queued, id: "demo-queued" }).success, false);
+    assert.equal(EvaluationRunSchema.safeParse({ ...queued, rubricVersion: "" }).success, false);
+  });
+});
+
+describe("API input and enums", () => {
+  it("accepts both call types and rejects unsupported values", () => {
     assert.equal(CallTypeSchema.safeParse("kickoff").success, true);
-  });
-  it("accepts 'coaching'", () => {
     assert.equal(CallTypeSchema.safeParse("coaching").success, true);
-  });
-  it("rejects 'discovery'", () => {
     assert.equal(CallTypeSchema.safeParse("discovery").success, false);
   });
-  it("rejects 'AT RISK' as a band (canonical form is AT_RISK)", () => {
-    assert.equal(PerformanceBandSchema.safeParse("AT RISK").success, false);
+
+  it("rejects empty transcripts and accepts approximately 65 KB", () => {
+    assert.equal(
+      CreateEvaluationInputSchema.safeParse({ callType: "kickoff", transcript: "   " }).success,
+      false
+    );
+    assert.equal(
+      CreateEvaluationInputSchema.safeParse({
+        callType: "coaching",
+        transcript: "x".repeat(65 * 1024),
+      }).success,
+      true
+    );
   });
-  it("accepts 'AT_RISK' as a band", () => {
+
+  it("rejects invalid performance bands", () => {
+    assert.equal(PerformanceBandSchema.safeParse("AVERAGE").success, false);
     assert.equal(PerformanceBandSchema.safeParse("AT_RISK").success, true);
   });
 });

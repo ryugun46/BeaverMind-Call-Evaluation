@@ -7,7 +7,10 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "test:contracts": "node --test --require tsx/cjs lib/contracts/__tests__/evaluation.test.ts"
+    "typecheck": "tsc --noEmit",
+    "test": "node --test --require tsx/cjs lib/contracts/__tests__/evaluation.test.ts lib/rubrics/__tests__/rubrics.test.ts",
+    "test:contracts": "node --test --require tsx/cjs lib/contracts/__tests__/evaluation.test.ts",
+    "test:rubrics": "node --test --require tsx/cjs lib/rubrics/__tests__/rubrics.test.ts"
   },
   "dependencies": {
     "clsx": "^2.1.1",

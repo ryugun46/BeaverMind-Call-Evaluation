@@ -54,6 +54,17 @@ export const PerformanceBandSchema = z.enum([
 ]);
 export type PerformanceBand = z.infer<typeof PerformanceBandSchema>;
 
+/**
+ * Dimension-level rubric labels are not the same thing as overall performance
+ * bands. Kick-off and Coaching both use authored labels such as MID, SURFACE,
+ * and WEAK for individual dimensions.
+ */
+export const DimensionBandSchema = z.union([
+  PerformanceBandSchema,
+  z.enum(["MID", "SURFACE", "WEAK"]),
+]);
+export type DimensionBand = z.infer<typeof DimensionBandSchema>;
+
 // ─────────────────────────────────────────────────────────────────────────────
 // § 2. Evidence Item
 // ─────────────────────────────────────────────────────────────────────────────
@@ -89,19 +100,75 @@ export type EvidenceItem = z.infer<typeof EvidenceItemSchema>;
  * An active dimension with zero evidence is valid when the required behaviour
  * was absent from the transcript.
  */
-export const DimensionResultSchema = z.object({
-  dimensionNumber: z.number().int().min(1).max(12),
-  name: z.string().min(1),
-  /** null for disabled/N/A dimensions; non-negative integer for active ones */
-  score: z.number().int().nonnegative().nullable(),
-  maxScore: z.number().int().positive(),
-  band: PerformanceBandSchema.nullable().optional(),
-  reasoning: z.string().min(1),
-  evidence: z.array(EvidenceItemSchema),
-  quickFix: z.string().nullable().optional(),
-  disabled: z.boolean().optional(),
-  disabledReason: z.string().nullable().optional(),
-});
+export const DimensionResultSchema = z
+  .object({
+    dimensionNumber: z.number().int().min(1).max(12),
+    name: z.string().min(1),
+    /** null only for disabled/N/A dimensions; Kick-off supports half points. */
+    score: z.number().nonnegative().multipleOf(0.5).nullable(),
+    maxScore: z.number().positive().multipleOf(0.5),
+    band: DimensionBandSchema.nullable(),
+    reasoning: z.string().min(1),
+    evidence: z.array(EvidenceItemSchema),
+    quickFix: z.string().nullable(),
+    disabled: z.boolean().default(false),
+    disabledReason: z.string().min(1).nullable(),
+  })
+  .superRefine((dimension, ctx) => {
+    if (dimension.disabled) {
+      if (dimension.score !== null) {
+        ctx.addIssue({
+          code: "custom",
+          message: "A disabled dimension must use score: null",
+          path: ["score"],
+        });
+      }
+      if (dimension.band !== null) {
+        ctx.addIssue({
+          code: "custom",
+          message: "A disabled dimension must use band: null",
+          path: ["band"],
+        });
+      }
+      if (!dimension.disabledReason) {
+        ctx.addIssue({
+          code: "custom",
+          message: "A disabled dimension requires disabledReason",
+          path: ["disabledReason"],
+        });
+      }
+      return;
+    }
+
+    if (dimension.score === null) {
+      ctx.addIssue({
+        code: "custom",
+        message: "An active dimension must have a numeric score",
+        path: ["score"],
+      });
+    } else if (dimension.score > dimension.maxScore) {
+      ctx.addIssue({
+        code: "custom",
+        message: "Dimension score must not exceed maxScore",
+        path: ["score"],
+      });
+    }
+
+    if (dimension.band === null) {
+      ctx.addIssue({
+        code: "custom",
+        message: "An active dimension requires a band",
+        path: ["band"],
+      });
+    }
+    if (dimension.disabledReason !== null) {
+      ctx.addIssue({
+        code: "custom",
+        message: "An active dimension must not have disabledReason",
+        path: ["disabledReason"],
+      });
+    }
+  });
 export type DimensionResult = z.infer<typeof DimensionResultSchema>;
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -187,8 +254,8 @@ export type RedFlagItem = z.infer<typeof RedFlagItemSchema>;
 export const OneThingSchema = z.object({
   title: z.string().min(1),
   explanation: z.string().min(1),
-  currentScore: z.number().nonnegative(),
-  potentialScore: z.number().nonnegative(),
+  currentScore: z.number().nonnegative().max(100),
+  potentialScore: z.number().nonnegative().max(100),
   /**
    * Dimension numbers that would benefit from this improvement.
    * May be empty if the improvement is cross-cutting.
@@ -252,6 +319,28 @@ export const EvaluationResultSchema = z.object({
   dimensions: z
     .array(DimensionResultSchema)
     .length(12, "EvaluationResult must contain exactly 12 dimension entries"),
+}).superRefine((result, ctx) => {
+  const expectedNumbers = Array.from({ length: 12 }, (_, index) => index + 1);
+  const actualNumbers = result.dimensions.map((dimension) => dimension.dimensionNumber);
+  if (actualNumbers.some((number, index) => number !== expectedNumbers[index])) {
+    ctx.addIssue({
+      code: "custom",
+      message: "Dimensions must be uniquely ordered from 1 through 12",
+      path: ["dimensions"],
+    });
+  }
+
+  const activeScoreTotal = result.dimensions.reduce(
+    (total, dimension) => total + (dimension.disabled ? 0 : dimension.score ?? 0),
+    0
+  );
+  if (Math.abs(activeScoreTotal - result.scoreSummary.rawScore) > 0.001) {
+    ctx.addIssue({
+      code: "custom",
+      message: "rawScore must equal the sum of active dimension scores",
+      path: ["scoreSummary", "rawScore"],
+    });
+  }
 });
 export type EvaluationResult = z.infer<typeof EvaluationResultSchema>;
 
@@ -269,7 +358,9 @@ export type EvaluationResult = z.infer<typeof EvaluationResultSchema>;
 export const EvaluationErrorSchema = z.object({
   code: z.string().min(1),
   message: z.string().min(1),
-  details: z.string().optional(),
+  details: z
+    .union([z.string().min(1), z.record(z.string(), z.unknown())])
+    .optional(),
 });
 export type EvaluationError = z.infer<typeof EvaluationErrorSchema>;
 
@@ -288,7 +379,6 @@ export const EvaluationMetadataSchema = z.object({
   callDuration: z.string().optional(),
   wordCount: z.number().int().nonnegative().optional(),
   queuePosition: z.number().int().nonnegative().optional(),
-  estimatedRemainingSeconds: z.number().nonnegative().optional(),
 });
 export type EvaluationMetadata = z.infer<typeof EvaluationMetadataSchema>;
 
@@ -307,58 +397,70 @@ export type EvaluationMetadata = z.infer<typeof EvaluationMetadataSchema>;
  * Dates are stored as ISO 8601 strings (UTC) so they survive JSON serialisation
  * across browser/server boundaries without timezone ambiguity.
  *
- * Flat score fields (totalScore, maxPossible, normalizedScore, performanceBand)
- * are kept at the top level for direct frontend consumption. They mirror the
- * values inside `result.scoreSummary` when the run is completed.
- * The database layer should treat the nested `result` as authoritative.
- *
  * `transcript` is stored on the run but is intentionally excluded from the
  * public report response schema (see EvaluationPublicResponseSchema) to avoid
  * exposing large text payloads unnecessarily.
  */
-export const EvaluationRunSchema = z.object({
-  id: z.string().min(1),
+const EvaluationRunShape = {
+  id: z.string().uuid(),
   callType: CallTypeSchema,
+  rubricVersion: z.string().min(1),
   status: EvaluationStatusSchema,
-
-  // ISO 8601 date strings — use z.string().datetime() for strict UTC validation
   createdAt: z.string().datetime({ offset: true }),
-  updatedAt: z.string().datetime({ offset: true }).optional(),
-  processingStartedAt: z.string().datetime({ offset: true }).nullable().optional(),
-  completedAt: z.string().datetime({ offset: true }).nullable().optional(),
-
-  /** Full transcript text. Stored on the run; not exposed in public API responses. */
-  transcript: z.string().optional(),
-
-  /**
-   * Structured evaluation result (set when status = "completed").
-   * null when queued, processing, or failed.
-   */
-  result: EvaluationResultSchema.nullable().optional(),
-
-  /**
-   * Structured error (set when status = "failed").
-   * null when not failed.
-   */
-  error: EvaluationErrorSchema.nullable().optional(),
-
-  // ── Flat score fields for direct frontend consumption ────────────────────
-  // These mirror result.scoreSummary when completed, so the frontend does not
-  // need to navigate into the nested result for basic score display.
-  totalScore: z.number().nonnegative().nullable().optional(),
-  maxPossible: z.number().positive().max(100).nullable().optional(),
-  normalizedScore: z.number().nonnegative().max(100).nullable().optional(),
-  performanceBand: PerformanceBandSchema.nullable().optional(),
-
-  // ── Flat display fields (also mirrored from result for convenience) ──────
-  brief: z.string().nullable().optional(),
-  oneThing: OneThingSchema.nullable().optional(),
-  redFlags: z.array(RedFlagItemSchema).nullable().optional(),
-  appliedRules: z.array(AppliedScoringRuleSchema).nullable().optional(),
-  dimensions: z.array(DimensionResultSchema).nullable().optional(),
-
+  updatedAt: z.string().datetime({ offset: true }),
+  processingStartedAt: z.string().datetime({ offset: true }).nullable(),
+  completedAt: z.string().datetime({ offset: true }).nullable(),
+  transcript: z.string().trim().min(1),
+  result: EvaluationResultSchema.nullable(),
+  error: EvaluationErrorSchema.nullable(),
   metadata: EvaluationMetadataSchema.optional(),
-});
+} as const;
+
+function validateRunLifecycle(
+  run: {
+    status: EvaluationStatus;
+    processingStartedAt: string | null;
+    completedAt: string | null;
+    result: EvaluationResult | null;
+    error: EvaluationError | null;
+  },
+  ctx: z.RefinementCtx
+) {
+  const issue = (path: string, message: string) =>
+    ctx.addIssue({ code: "custom", message, path: [path] });
+
+  if (run.status === "queued") {
+    if (run.processingStartedAt !== null) issue("processingStartedAt", "Queued run cannot have processingStartedAt");
+    if (run.completedAt !== null) issue("completedAt", "Queued run cannot have completedAt");
+    if (run.result !== null) issue("result", "Queued run cannot have a result");
+    if (run.error !== null) issue("error", "Queued run cannot have an error");
+  }
+
+  if (run.status === "processing") {
+    if (run.processingStartedAt === null) issue("processingStartedAt", "Processing run requires processingStartedAt");
+    if (run.completedAt !== null) issue("completedAt", "Processing run cannot have completedAt");
+    if (run.result !== null) issue("result", "Processing run cannot have a result");
+    if (run.error !== null) issue("error", "Processing run cannot have an error");
+  }
+
+  if (run.status === "completed") {
+    if (run.processingStartedAt === null) issue("processingStartedAt", "Completed run requires processingStartedAt");
+    if (run.completedAt === null) issue("completedAt", "Completed run requires completedAt");
+    if (run.result === null) issue("result", "Completed run requires a result");
+    if (run.error !== null) issue("error", "Completed run cannot have an error");
+  }
+
+  if (run.status === "failed") {
+    if (run.processingStartedAt === null) issue("processingStartedAt", "Failed run requires processingStartedAt");
+    if (run.completedAt === null) issue("completedAt", "Failed run requires completedAt");
+    if (run.result !== null) issue("result", "Failed run cannot have a result");
+    if (run.error === null) issue("error", "Failed run requires a structured error");
+  }
+}
+
+export const EvaluationRunSchema = z
+  .object(EvaluationRunShape)
+  .superRefine(validateRunLifecycle);
 export type EvaluationRun = z.infer<typeof EvaluationRunSchema>;
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -388,8 +490,8 @@ export type CreateEvaluationInput = z.infer<typeof CreateEvaluationInputSchema>;
  * The run is in "queued" status at this point.
  */
 export const CreateEvaluationResponseSchema = z.object({
-  id: z.string().min(1),
-  status: EvaluationStatusSchema,
+  id: z.string().uuid(),
+  status: z.literal("queued"),
   /** Permanent permalink to the evaluation report page */
   evaluationUrl: z.string().url(),
 });
@@ -402,37 +504,21 @@ export type CreateEvaluationResponse = z.infer<typeof CreateEvaluationResponseSc
  * payloads in normal report requests. Transcript evidence is available via
  * the structured `dimensions[].evidence` field.
  *
- * Includes the flat score/display fields for convenience; the full nested
- * `result` is also included for complete structured access.
+ * The structured result is the only report-data source of truth.
  */
 export const EvaluationPublicResponseSchema = z.object({
-  id: z.string().min(1),
+  id: z.string().uuid(),
   callType: CallTypeSchema,
+  rubricVersion: z.string().min(1),
   status: EvaluationStatusSchema,
   createdAt: z.string().datetime({ offset: true }),
-  completedAt: z.string().datetime({ offset: true }).nullable().optional(),
-
-  // Flat score fields for direct display
-  totalScore: z.number().nonnegative().nullable().optional(),
-  maxPossible: z.number().positive().max(100).nullable().optional(),
-  normalizedScore: z.number().nonnegative().max(100).nullable().optional(),
-  performanceBand: PerformanceBandSchema.nullable().optional(),
-
-  // Flat display fields
-  brief: z.string().nullable().optional(),
-  oneThing: OneThingSchema.nullable().optional(),
-  redFlags: z.array(RedFlagItemSchema).nullable().optional(),
-  appliedRules: z.array(AppliedScoringRuleSchema).nullable().optional(),
-  dimensions: z.array(DimensionResultSchema).nullable().optional(),
-
-  // Full nested result for complete structured access
-  result: EvaluationResultSchema.nullable().optional(),
-
-  // Structured error for failed runs
-  error: EvaluationErrorSchema.nullable().optional(),
-
+  updatedAt: z.string().datetime({ offset: true }),
+  processingStartedAt: z.string().datetime({ offset: true }).nullable(),
+  completedAt: z.string().datetime({ offset: true }).nullable(),
+  result: EvaluationResultSchema.nullable(),
+  error: EvaluationErrorSchema.nullable(),
   metadata: EvaluationMetadataSchema.optional(),
-});
+}).superRefine(validateRunLifecycle);
 export type EvaluationPublicResponse = z.infer<typeof EvaluationPublicResponseSchema>;
 
 // ─────────────────────────────────────────────────────────────────────────────

@@ -2,14 +2,14 @@
 
 import React, { useState } from "react";
 import Link from "next/link";
-import { EvaluationRun } from "@/lib/types/evaluation";
+import { EvaluationPublicResponse } from "@/lib/types/evaluation";
 import { formatCallType, formatDate } from "@/lib/utils/formatters";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { ActionButton } from "@/components/ui/ActionButton";
 import { Share2, Download, Check, Calendar, Hash, PlusCircle } from "lucide-react";
 
 interface ReportHeaderProps {
-  evaluation: EvaluationRun;
+  evaluation: EvaluationPublicResponse;
   onDownloadPdf?: () => void;
 }
 

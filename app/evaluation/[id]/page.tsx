@@ -1,5 +1,5 @@
 import React from "react";
-import { getEvaluationById } from "@/lib/fixtures/evaluation-fixtures";
+import { getPublicEvaluationById } from "@/lib/fixtures/evaluation-fixtures";
 import { PageContainer } from "@/components/layout/PageContainer";
 import { QueuedState } from "@/components/evaluation/QueuedState";
 import { ProcessingState } from "@/components/evaluation/ProcessingState";
@@ -15,7 +15,7 @@ interface EvaluationPageProps {
 }
 
 export function generateMetadata({ params }: EvaluationPageProps) {
-  const evaluation = getEvaluationById(params.id);
+  const evaluation = getPublicEvaluationById(params.id);
 
   if (!evaluation) {
     return {
@@ -32,7 +32,7 @@ export function generateMetadata({ params }: EvaluationPageProps) {
 }
 
 export default function EvaluationPage({ params }: EvaluationPageProps) {
-  const evaluation = getEvaluationById(params.id);
+  const evaluation = getPublicEvaluationById(params.id);
 
   if (!evaluation) {
     return (

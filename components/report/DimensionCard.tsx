@@ -111,7 +111,7 @@ export function DimensionCard({
               <Ban className="w-4 h-4 text-zinc-500 shrink-0 mt-0.5" />
               <div className="space-y-1">
                 <strong className="text-zinc-900 font-semibold block">
-                  Dimension Not Applicable (Excluded from 85-point Raw Total)
+                  Dimension Not Applicable (Excluded from Raw Total)
                 </strong>
                 <p className="leading-relaxed text-zinc-600">
                   {dimension.disabledReason || "This dimension was not applicable to the observed call context."}

@@ -1,4 +1,4 @@
-import { PerformanceBand, EvaluationStatus, CallType } from "@/lib/types/evaluation";
+import { DimensionBand, EvaluationStatus, CallType } from "@/lib/types/evaluation";
 
 export function formatCallType(type: CallType): string {
   switch (type) {
@@ -11,7 +11,7 @@ export function formatCallType(type: CallType): string {
   }
 }
 
-export function formatPerformanceBand(band?: PerformanceBand | null): {
+export function formatPerformanceBand(band?: DimensionBand | null): {
   label: string;
   badgeClass: string;
   bgClass: string;
@@ -39,8 +39,9 @@ export function formatPerformanceBand(band?: PerformanceBand | null): {
         description: "Consistently meets quality standards with minor areas for refinement.",
       };
     case "INCONSISTENT":
+    case "MID":
       return {
-        label: "INCONSISTENT",
+        label: band === "MID" ? "MID" : "INCONSISTENT",
         badgeClass: "bg-amber-50 text-amber-900 border-amber-300 ring-amber-600/10",
         bgClass: "bg-amber-50",
         textClass: "text-amber-900",
@@ -48,8 +49,10 @@ export function formatPerformanceBand(band?: PerformanceBand | null): {
         description: "Demonstrates core skills unevenly across call dimensions.",
       };
     case "AT_RISK":
+    case "SURFACE":
+    case "WEAK":
       return {
-        label: "AT RISK",
+        label: band === "AT_RISK" ? "AT RISK" : band,
         badgeClass: "bg-orange-50 text-orange-900 border-orange-300 ring-orange-600/10",
         bgClass: "bg-orange-50",
         textClass: "text-orange-900",

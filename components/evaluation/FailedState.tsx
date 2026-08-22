@@ -2,18 +2,25 @@
 
 import React, { useState } from "react";
 import Link from "next/link";
-import { EvaluationRun } from "@/lib/types/evaluation";
+import { EvaluationPublicResponse } from "@/lib/types/evaluation";
 import { ReportHeader } from "./ReportHeader";
 import { LifecycleStepper } from "./LifecycleStepper";
 import { ActionButton } from "@/components/ui/ActionButton";
 import { AlertTriangle, PlusCircle, Copy, Check, Info, ShieldAlert, Layers } from "lucide-react";
 
 interface FailedStateProps {
-  evaluation: EvaluationRun;
+  evaluation: EvaluationPublicResponse;
 }
 
 export function FailedState({ evaluation }: FailedStateProps) {
   const [copied, setCopied] = useState(false);
+  const error = evaluation.error;
+  const errorDetails =
+    typeof error?.details === "string"
+      ? error.details
+      : error?.details
+      ? JSON.stringify(error.details, null, 2)
+      : null;
 
   const handleCopyId = async () => {
     try {
@@ -69,12 +76,24 @@ export function FailedState({ evaluation }: FailedStateProps) {
           <div className="flex items-center gap-2 font-semibold text-rose-900">
             <ShieldAlert className="w-4 h-4 text-rose-600 shrink-0" />
             <span>Diagnostic Failure Details</span>
+            {error?.code && (
+              <code className="ml-auto rounded border border-rose-200 bg-white/80 px-2 py-0.5 text-[11px]">
+                {error.code}
+              </code>
+            )}
           </div>
 
           <p className="font-mono text-xs leading-relaxed bg-white/80 p-3 rounded-lg border border-rose-200/60 text-rose-900">
-            {evaluation.error?.message || "The transcript could not be processed due to insufficient word count or missing speaker turn indicators."}
+            {error?.message || "The evaluation could not be processed."}
           </p>
 
+          {errorDetails && (
+            <pre className="overflow-x-auto whitespace-pre-wrap rounded-lg border border-rose-200/60 bg-white/70 p-3 font-mono text-[11px] text-rose-900">
+              {errorDetails}
+            </pre>
+          )}
+
+          {error?.code === "TRANSCRIPT_FORMAT_INVALID" && (
           <div className="text-rose-800/90 text-xs space-y-1">
             <p className="font-medium text-rose-900 flex items-center gap-1.5">
               <Info className="w-3.5 h-3.5" />
@@ -84,6 +103,7 @@ export function FailedState({ evaluation }: FailedStateProps) {
               Ensure the transcript contains speaker-labelled turns (e.g., <code className="font-mono bg-rose-100/60 px-1 py-0.5 rounded text-rose-950">[Coach Name]:</code> and <code className="font-mono bg-rose-100/60 px-1 py-0.5 rounded text-rose-950">[Client Name]:</code>) and adequate conversational length.
             </p>
           </div>
+          )}
         </div>
 
         {/* 5. Failure Actions */}

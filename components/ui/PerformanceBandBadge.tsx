@@ -1,11 +1,11 @@
 import React from "react";
-import { PerformanceBand } from "@/lib/types/evaluation";
+import { DimensionBand } from "@/lib/types/evaluation";
 import { formatPerformanceBand } from "@/lib/utils/formatters";
 import { cn } from "@/lib/utils/cn";
 import { ShieldCheck, Award, AlertCircle, AlertOctagon, HelpCircle } from "lucide-react";
 
 interface PerformanceBandBadgeProps {
-  band?: PerformanceBand | null;
+  band?: DimensionBand | null;
   size?: "sm" | "md" | "lg";
   showIcon?: boolean;
   className?: string;
@@ -26,8 +26,11 @@ export function PerformanceBandBadge({
       case "STRONG":
         return <ShieldCheck className="w-3.5 h-3.5 shrink-0 text-blue-700" aria-hidden="true" />;
       case "INCONSISTENT":
+      case "MID":
         return <AlertCircle className="w-3.5 h-3.5 shrink-0 text-amber-700" aria-hidden="true" />;
       case "AT_RISK":
+      case "SURFACE":
+      case "WEAK":
         return <AlertCircle className="w-3.5 h-3.5 shrink-0 text-orange-700" aria-hidden="true" />;
       case "FAIL":
         return <AlertOctagon className="w-3.5 h-3.5 shrink-0 text-rose-700" aria-hidden="true" />;

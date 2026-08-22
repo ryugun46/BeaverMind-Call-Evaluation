@@ -12,6 +12,7 @@ export type {
   CallType,
   EvaluationStatus,
   PerformanceBand,
+  DimensionBand,
   EvidenceItem,
   DimensionResult,
   ScoringRuleScope,

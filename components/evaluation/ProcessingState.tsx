@@ -2,14 +2,14 @@
 
 import React from "react";
 import Link from "next/link";
-import { EvaluationRun } from "@/lib/types/evaluation";
+import { EvaluationPublicResponse } from "@/lib/types/evaluation";
 import { ReportHeader } from "./ReportHeader";
 import { LifecycleStepper } from "./LifecycleStepper";
 import { ActionButton } from "@/components/ui/ActionButton";
 import { Loader2, PlusCircle, ArrowLeft, Layers, ShieldCheck, CheckCircle2, Search, FileCheck } from "lucide-react";
 
 interface ProcessingStateProps {
-  evaluation: EvaluationRun;
+  evaluation: EvaluationPublicResponse;
 }
 
 export function ProcessingState({ evaluation }: ProcessingStateProps) {

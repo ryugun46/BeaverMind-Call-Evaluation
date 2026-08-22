@@ -22,6 +22,11 @@ A high-credibility, evidence-grounded AI Call Quality Assurance evaluation platf
    - 12 coaching & objection handling dimensions.
    - **Adaptive Normalization**: When movement/physical coaching is not present, **Dimension 4 is marked N/A** (15 points excluded). The raw score out of 85 is displayed alongside the dynamically normalized score on a standard 100-point scale.
 
+> **Source clarification required:** the authored Coaching dimension maxima add
+> to 105 even though the rubric declares 100 (and 85 when D4 is inactive).
+> Diagnostics D2 redistribution is also underspecified. Both conflicts are
+> preserved in `lib/rubrics/coaching.ts`; no scoring algorithm is guessed.
+
 ---
 
 ## Project Structure
@@ -62,14 +67,23 @@ components/
     SectionCard.tsx              # Clean card surface primitive
     ActionButton.tsx             # Accessible button with states
 lib/
+  contracts/
+    evaluation.ts              # Authoritative Zod schemas and inferred types
+  rubrics/
+    kickoff.ts                 # Versioned band-based Kick-off definition
+    coaching.ts                # Versioned discrete Coaching definition
+    performance-bands.ts       # Continuous shared overall bands
   types/
-    evaluation.ts                # Domain types & rubric contracts
+    evaluation.ts              # Compatibility type re-exports only
   fixtures/
-    evaluation-fixtures.ts       # Realistic QA evaluation fixtures
+    evaluation-fixtures.ts     # Zod-parsed, rubric-derived lifecycle fixtures
   utils/
     formatters.ts                # Score, date, and band formatting helpers
     cn.ts                        # Tailwind class merge helper
 ```
+
+Database migration and RLS documentation live in `supabase/` and
+`docs/database.md`.
 
 ---
 

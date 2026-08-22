@@ -5,11 +5,12 @@ import { SubmissionForm } from "@/components/submission/SubmissionForm";
 import { Sparkles, Layers, ArrowRight } from "lucide-react";
 
 export default function HomePage() {
+  const showDevelopmentFixtures = process.env.NODE_ENV !== "production";
   const steps = [
     {
       num: "1",
       title: "Run created",
-      desc: "An immutable evaluation run ID and permanent record are created.",
+      desc: "A unique evaluation run ID and permanent report URL are created.",
     },
     {
       num: "2",
@@ -90,7 +91,8 @@ export default function HomePage() {
         </div>
       </section>
 
-      {/* 4. Development Fixture Inspector (Quick access to all lifecycle states) */}
+      {/* Development-only fixture inspector */}
+      {showDevelopmentFixtures && (
       <div className="pt-2 border-t border-zinc-200/60">
         <div className="flex items-center justify-between gap-2 mb-3">
           <span className="text-xs font-mono uppercase tracking-wider text-zinc-400 font-medium">
@@ -117,6 +119,7 @@ export default function HomePage() {
           ))}
         </div>
       </div>
+      )}
     </PageContainer>
   );
 }

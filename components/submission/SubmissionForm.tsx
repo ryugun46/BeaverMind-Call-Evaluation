@@ -6,8 +6,7 @@ import { CallType } from "@/lib/types/evaluation";
 import { CallTypeSelector } from "./CallTypeSelector";
 import { TranscriptInput } from "./TranscriptInput";
 import { ActionButton } from "@/components/ui/ActionButton";
-import { ArrowRight, Sparkles, FileText, ShieldCheck } from "lucide-react";
-import { SAMPLE_KICKOFF_TRANSCRIPT, SAMPLE_COACHING_TRANSCRIPT } from "@/lib/fixtures/evaluation-fixtures";
+import { ArrowRight, ShieldCheck } from "lucide-react";
 
 export function SubmissionForm() {
   const router = useRouter();
@@ -18,12 +17,6 @@ export function SubmissionForm() {
 
   const handleClear = () => {
     setTranscript("");
-    setError(null);
-  };
-
-  const handleLoadSample = (type: CallType) => {
-    setCallType(type);
-    setTranscript(type === "kickoff" ? SAMPLE_KICKOFF_TRANSCRIPT : SAMPLE_COACHING_TRANSCRIPT);
     setError(null);
   };
 
@@ -75,32 +68,7 @@ export function SubmissionForm() {
         disabled={isSubmitting}
       />
 
-      {/* 2. Sample Transcript Quick-Loads */}
-      <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
-        <span className="text-xs text-zinc-500 font-medium">Quick load test transcripts:</span>
-        <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={() => handleLoadSample("kickoff")}
-            disabled={isSubmitting}
-            className="text-xs text-zinc-600 hover:text-zinc-900 bg-zinc-100 hover:bg-zinc-200/80 px-2.5 py-1 rounded-md transition-colors inline-flex items-center gap-1 cursor-pointer font-medium"
-          >
-            <FileText className="w-3 h-3 text-zinc-500" />
-            <span>Sample Kick-off</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => handleLoadSample("coaching")}
-            disabled={isSubmitting}
-            className="text-xs text-zinc-600 hover:text-zinc-900 bg-zinc-100 hover:bg-zinc-200/80 px-2.5 py-1 rounded-md transition-colors inline-flex items-center gap-1 cursor-pointer font-medium"
-          >
-            <Sparkles className="w-3 h-3 text-zinc-500" />
-            <span>Sample Coaching</span>
-          </button>
-        </div>
-      </div>
-
-      {/* 3. Transcript Input Area */}
+      {/* 2. Transcript Input Area */}
       <TranscriptInput
         value={transcript}
         onChange={(val) => {
@@ -112,7 +80,7 @@ export function SubmissionForm() {
         disabled={isSubmitting}
       />
 
-      {/* 4. Action Submission Row & Reassurance */}
+      {/* 3. Action Submission Row & Reassurance */}
       <div className="pt-3 border-t border-zinc-200/80 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4">
         <div className="text-xs text-zinc-500 flex items-center gap-2">
           <ShieldCheck className="w-4 h-4 text-emerald-600 shrink-0" />

@@ -20,12 +20,9 @@ A high-credibility, evidence-grounded AI Call Quality Assurance evaluation platf
 
 2. **Coaching Call**
    - 12 coaching & objection handling dimensions.
-   - **Adaptive Normalization**: When movement/physical coaching is not present, **Dimension 4 is marked N/A** (15 points excluded). The raw score out of 85 is displayed alongside the dynamically normalized score on a standard 100-point scale.
-
-> **Source clarification required:** the authored Coaching dimension maxima add
-> to 105 even though the rubric declares 100 (and 85 when D4 is inactive).
-> Diagnostics D2 redistribution is also underspecified. Both conflicts are
-> preserved in `lib/rubrics/coaching.ts`; no scoring algorithm is guessed.
+   - Fixed 100-point full maximum. Diagnostics Review (D2) is weighted at 5 points in `coaching-v2`.
+   - **Adaptive Normalization**: An inapplicable dimension is marked N/A and its authored weight is excluded from the raw maximum. D2 N/A produces a 95-point raw maximum, D4 N/A produces 85, and both N/A produce 80; every case is normalized to a standard 100-point scale.
+   - D2 weight is never redistributed to D3 or D4.
 
 ---
 

@@ -18,10 +18,13 @@ const discrete = (scoreBands: ScoreBandDefinition[]) => ({
 
 const disabledOutcome = { disabled: true as const, score: null, band: "N/A" as const };
 
-/** Coaching rubric transcribed from coaching-call-rubric.md. */
+/**
+ * Coaching rubric transcribed from coaching-call-rubric.md, with the
+ * source-owner-approved D2 maximum and N/A policy recorded in v2.
+ */
 export const COACHING_RUBRIC = RubricDefinitionSchema.parse({
   id: "coaching",
-  version: "coaching-v1",
+  version: "coaching-v2",
   callType: "coaching",
   name: "Coaching Call",
   sourceReference: {
@@ -52,15 +55,15 @@ export const COACHING_RUBRIC = RubricDefinitionSchema.parse({
     {
       number: 2,
       name: "Diagnostics Review",
-      maxScore: 10,
+      maxScore: 5,
       pillar: "VALUE",
       sopTimeMinutes: "3–4; applicable at weeks 8, 16, and 24",
       guidance:
         "When applicable, review one or two movements with anatomically specific feedback tied to the client's pain points, goals, and why.",
       scoring: discrete([
-        bucket("ELITE", 10, "Reviews one or two movements with precise observations, direct goal linkage, and clear client understanding."),
-        bucket("STRONG", 7, "Good observations and correct review scope, but goal context is incomplete."),
-        bucket("SURFACE", 3, "Generic movement feedback with no goal link or too many movements reviewed."),
+        bucket("ELITE", 5, "Reviews one or two movements with precise observations, direct goal linkage, and clear client understanding."),
+        bucket("STRONG", 3.5, "Good observations and correct review scope, but goal context is incomplete."),
+        bucket("SURFACE", 1.5, "Generic movement feedback with no goal link or too many movements reviewed."),
         bucket("FAIL", 0, "Applicable diagnostics are skipped, rushed, unclear, or not personalized."),
       ]),
       applicabilityRules: [
@@ -71,13 +74,15 @@ export const COACHING_RUBRIC = RubricDefinitionSchema.parse({
           disabledReasonTemplate: "Diagnostics were not applicable for this cycle.",
           disabledOutcome,
           weightAdjustment: {
-            mode: "requires_resolution",
-            targetDimensionNumbers: [3, 4],
-            sourceInstruction: "Redistribute D2 weight to D3 and D4; do not penalize the coach.",
-            unresolvedReason:
-              "The source rubric does not state the exact split, score buckets after redistribution, or behavior when D4 is also disabled.",
+            mode: "exclude_dimension_weight",
+            excludedWeight: 5,
+            normalizeTo: 100,
           },
         },
+      ],
+      notes: [
+        "Version 2 corrects D2 from 10 to 5 points while preserving the original bucket proportions.",
+        "When D2 is N/A, exclude its five points from maxPossible and normalize the active raw score to 100; do not redistribute weight.",
       ],
     },
     {
@@ -117,8 +122,8 @@ export const COACHING_RUBRIC = RubricDefinitionSchema.parse({
           disabledReasonTemplate: "No movement coaching occurred; the session was entirely strategy/accountability.",
           disabledOutcome,
           weightAdjustment: {
-            mode: "reduce_raw_maximum",
-            reducedRawMaximum: 85,
+            mode: "exclude_dimension_weight",
+            excludedWeight: 15,
             normalizeTo: 100,
           },
           detectionCriteria: [
@@ -308,16 +313,7 @@ export const COACHING_RUBRIC = RubricDefinitionSchema.parse({
     "Use quote-first rationale and never score from general impressions.",
     "The framework is a natural container, not a script; robotic completeness is not Elite execution.",
     "When D4 is disabled, report raw score over 85 and normalize it to 100.",
+    "When D2 is disabled, exclude its five-point weight rather than redistributing it; maxPossible is 95 with D4 active and 80 when D4 is also disabled.",
   ],
-  unresolvedRules: [
-    "The authored dimension maximums total 105, while the same rubric declares a 100-point full maximum and an 85-point maximum when D4 is disabled. All source values are preserved; a scoring engine must not resolve this silently.",
-    "D2 says to redistribute its 10 points to D3 and D4 when diagnostics are N/A, but does not define the split, revised discrete buckets, or the case where D4 is also disabled. A future scoring-engine decision requires source-owner clarification.",
-  ],
-  maximumReconciliation: {
-    status: "unresolved_source_conflict",
-    declaredMaximum: 100,
-    dimensionMaximumTotal: 105,
-    explanation:
-      "The source headings and bucket tables total 105, but the source also repeatedly declares 100 full points and 85 when the 15-point D4 is disabled. No dimension weight is changed without an authoritative correction.",
-  },
+  unresolvedRules: [],
 });

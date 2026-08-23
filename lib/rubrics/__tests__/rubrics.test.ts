@@ -20,21 +20,13 @@ describe("rubric structure", () => {
     assert.equal(totalMaximum(KICKOFF_RUBRIC.dimensions), 100);
   });
 
-  it("Coaching has exactly 12 uniquely numbered dimensions and preserves its declared 100 maximum", () => {
+  it("Coaching has exactly 12 uniquely numbered dimensions totaling 100", () => {
     assert.equal(COACHING_RUBRIC.dimensions.length, 12);
     assert.equal(new Set(COACHING_RUBRIC.dimensions.map((dimension) => dimension.number)).size, 12);
     assert.equal(COACHING_RUBRIC.maxScore, 100);
-  });
-
-  it("records the source's 105-versus-100 Coaching conflict without altering dimension weights", () => {
-    assert.equal(totalMaximum(COACHING_RUBRIC.dimensions), 105);
-    assert.deepEqual(COACHING_RUBRIC.maximumReconciliation, {
-      status: "unresolved_source_conflict",
-      declaredMaximum: 100,
-      dimensionMaximumTotal: 105,
-      explanation:
-        "The source headings and bucket tables total 105, but the source also repeatedly declares 100 full points and 85 when the 15-point D4 is disabled. No dimension weight is changed without an authoritative correction.",
-    });
+    assert.equal(totalMaximum(COACHING_RUBRIC.dimensions), 100);
+    assert.equal(COACHING_RUBRIC.maximumReconciliation, undefined);
+    assert.deepEqual(COACHING_RUBRIC.unresolvedRules, []);
   });
 
   it("both authoritative definitions pass runtime schema validation", () => {
@@ -81,6 +73,7 @@ describe("scoring-model differences", () => {
     };
 
     assert.deepEqual(getScores(1), [10, 7, 3, 0]);
+    assert.deepEqual(getScores(2), [5, 3.5, 1.5, 0]);
     assert.deepEqual(getScores(3), [15, 10, 5, 0]);
     assert.deepEqual(getScores(10), [5, 0]);
   });
@@ -94,22 +87,39 @@ describe("Coaching applicability", () => {
     assert.ok(rule);
     assert.deepEqual(rule.disabledOutcome, { disabled: true, score: null, band: "N/A" });
     assert.deepEqual(rule.weightAdjustment, {
-      mode: "reduce_raw_maximum",
-      reducedRawMaximum: 85,
+      mode: "exclude_dimension_weight",
+      excludedWeight: 15,
       normalizeTo: 100,
     });
     assert.equal(rule.detectionCriteria?.length, 4);
   });
 
-  it("models D2 redistribution as unresolved instead of inventing an algorithm", () => {
+  it("models D2 N/A by excluding its five-point weight without redistribution", () => {
     const dimension = COACHING_RUBRIC.dimensions.find((item) => item.number === 2);
     assert.ok(dimension);
+    assert.equal(dimension.maxScore, 5);
     const rule = dimension.applicabilityRules?.[0];
     assert.ok(rule);
-    assert.equal(rule.weightAdjustment.mode, "requires_resolution");
-    if (rule.weightAdjustment.mode !== "requires_resolution") assert.fail("Expected unresolved adjustment");
-    assert.deepEqual(rule.weightAdjustment.targetDimensionNumbers, [3, 4]);
-    assert.ok(rule.weightAdjustment.unresolvedReason.length > 0);
+    assert.deepEqual(rule.disabledOutcome, { disabled: true, score: null, band: "N/A" });
+    assert.deepEqual(rule.weightAdjustment, {
+      mode: "exclude_dimension_weight",
+      excludedWeight: 5,
+      normalizeTo: 100,
+    });
+  });
+
+  it("composes D2 and D4 exclusions into an 80-point raw maximum", () => {
+    const excludedWeight = [2, 4].reduce((sum, dimensionNumber) => {
+      const dimension = COACHING_RUBRIC.dimensions.find(
+        (item) => item.number === dimensionNumber
+      );
+      assert.ok(dimension);
+      const adjustment = dimension.applicabilityRules?.[0]?.weightAdjustment;
+      assert.ok(adjustment?.mode === "exclude_dimension_weight");
+      return sum + adjustment.excludedWeight;
+    }, 0);
+
+    assert.equal(COACHING_RUBRIC.maxScore - excludedWeight, 80);
   });
 });
 
@@ -118,7 +128,7 @@ describe("rubric lookup", () => {
     assert.strictEqual(getRubricForCallType("kickoff"), KICKOFF_RUBRIC);
     assert.strictEqual(getRubricForCallType("coaching"), COACHING_RUBRIC);
     assert.equal(getRubricForCallType("kickoff").version, "kickoff-v1");
-    assert.equal(getRubricForCallType("coaching").version, "coaching-v1");
+    assert.equal(getRubricForCallType("coaching").version, "coaching-v2");
   });
 
   it("safely rejects an unknown runtime call type", () => {

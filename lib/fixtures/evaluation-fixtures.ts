@@ -342,24 +342,24 @@ const kickoffAtRiskResult = makeResult({
 });
 
 const coachingFullResult = makeResult({
-  rawScore: 92,
+  rawScore: 87,
   maxPossible: 100,
-  normalizedScore: 92,
-  finalScore: 92,
-  performanceBand: "ELITE",
+  normalizedScore: 87,
+  finalScore: 87,
+  performanceBand: "STRONG",
   brief:
-    "A complete Coaching call with live movement work, long-term vision, an intelligent adjustment, concrete commitments, and live booking.",
+    "A strong Coaching call with live movement work, long-term vision, an intelligent adjustment, concrete commitments, and live booking.",
   oneThing: {
     title: "Elicit one more reflective movement insight",
     explanation:
       "After the corrected repetition, ask the client to name the cue that produced the change before moving on.",
-    currentScore: 92,
-    potentialScore: 97,
+    currentScore: 87,
+    potentialScore: 92,
     affectedDimensionNumbers: [4],
   },
   dimensions: makeDimensions(
     "coaching",
-    [10, 10, 15, 10, 7, 10, 5, 5, 5, 5, 5, 5],
+    [10, 5, 15, 10, 7, 10, 5, 5, 5, 5, 5, 5],
     coachingQuotes
   ),
 });
@@ -368,19 +368,19 @@ const d4DisabledReason =
   "No live or recorded movement coaching occurred; the session focused entirely on strategy and accountability.";
 
 const coachingDisabledResult = makeResult({
-  rawScore: 71,
+  rawScore: 67.5,
   maxPossible: 85,
-  normalizedScore: 84,
-  finalScore: 84,
-  performanceBand: "STRONG",
+  normalizedScore: 79.4,
+  finalScore: 79.4,
+  performanceBand: "INCONSISTENT",
   brief:
     "A strong strategy and accountability session. Movement Coaching Quality was correctly excluded because no movement work occurred.",
   oneThing: {
     title: "Strengthen the long-term vision connection",
     explanation:
       "Name the client's twelve-month identity outcome explicitly before finalizing this week's commitments.",
-    currentScore: 84,
-    potentialScore: 90,
+    currentScore: 79.4,
+    potentialScore: 85.3,
     affectedDimensionNumbers: [3],
   },
   appliedRules: [
@@ -390,13 +390,13 @@ const coachingDisabledResult = makeResult({
       description: d4DisabledReason,
       scope: "applicability",
       affectedDimensionNumber: 4,
-      effect: "Raw score 71 / 85; normalized score 84 / 100.",
+      effect: "Raw score 67.5 / 85; normalized score 79.4 / 100.",
       nonRecoverable: false,
     },
   ],
   dimensions: makeDimensions(
     "coaching",
-    [7, 7, 10, null, 7, 10, 5, 5, 5, 5, 5, 5],
+    [7, 3.5, 10, null, 7, 10, 5, 5, 5, 5, 5, 5],
     coachingStrategyQuotes,
     d4DisabledReason
   ),
@@ -438,7 +438,7 @@ export const FIXTURE_EVALUATIONS: Record<string, EvaluationRun> = {
   "completed-coaching-full": parseRun({
     id: "8821ee9f-e8d7-47cf-9a61-000000000003",
     callType: "coaching",
-    rubricVersion: "coaching-v1",
+    rubricVersion: "coaching-v2",
     status: "completed",
     transcript: SAMPLE_COACHING_TRANSCRIPT,
     createdAt: "2026-08-22T15:00:00Z",
@@ -452,7 +452,7 @@ export const FIXTURE_EVALUATIONS: Record<string, EvaluationRun> = {
   "coaching-d4-disabled": parseRun({
     id: "4491ab12-45f4-4d81-a8be-000000000004",
     callType: "coaching",
-    rubricVersion: "coaching-v1",
+    rubricVersion: "coaching-v2",
     status: "completed",
     transcript: COACHING_STRATEGY_TRANSCRIPT,
     createdAt: "2026-08-22T14:30:00Z",
@@ -466,7 +466,7 @@ export const FIXTURE_EVALUATIONS: Record<string, EvaluationRun> = {
   "processing-coaching": parseRun({
     id: "7712d548-e501-4619-9b45-000000000005",
     callType: "coaching",
-    rubricVersion: "coaching-v1",
+    rubricVersion: "coaching-v2",
     status: "processing",
     transcript: SAMPLE_COACHING_TRANSCRIPT,
     createdAt: "2026-08-22T17:58:10Z",

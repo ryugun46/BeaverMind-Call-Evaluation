@@ -35,7 +35,7 @@ export default function HomePage() {
     { label: "Failed State", href: "/evaluation/demo-failed", badge: "Failed" },
     { label: "Completed Kick-off (100 pts)", href: "/evaluation/demo-completed-kickoff", badge: "Elite" },
     { label: "Kick-off (At Risk · Caps Applied)", href: "/evaluation/kickoff-at-risk", badge: "At Risk" },
-    { label: "Completed Coaching (100 pts)", href: "/evaluation/demo-completed-coaching", badge: "Elite" },
+    { label: "Completed Coaching (100 pts)", href: "/evaluation/demo-completed-coaching", badge: "Strong" },
     { label: "Coaching (D4 Disabled · 85 pts)", href: "/evaluation/demo-coaching-d4-disabled", badge: "Normalized" },
     { label: "Not Found State", href: "/evaluation/unknown-sample-id", badge: "404" },
   ];

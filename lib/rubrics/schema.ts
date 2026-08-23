@@ -71,6 +71,16 @@ export type DisabledDimensionOutcome = z.infer<typeof DisabledDimensionOutcomeSc
 
 export const WeightAdjustmentSchema = z.discriminatedUnion("mode", [
   z.object({
+    /**
+     * Exclude this dimension's authored weight from the raw maximum. Multiple
+     * inactive dimensions compose by subtracting each excluded weight before
+     * the active raw score is normalized.
+     */
+    mode: z.literal("exclude_dimension_weight"),
+    excludedWeight: z.number().positive().max(100),
+    normalizeTo: z.literal(100),
+  }),
+  z.object({
     mode: z.literal("reduce_raw_maximum"),
     reducedRawMaximum: z.number().positive().max(100),
     normalizeTo: z.literal(100),
@@ -142,6 +152,26 @@ export const DimensionDefinitionSchema = z
         });
       }
     }
+
+    (dimension.applicabilityRules ?? []).forEach((rule, index) => {
+      if (rule.dimensionNumber !== dimension.number) {
+        ctx.addIssue({
+          code: "custom",
+          message: "Applicability rule dimensionNumber must match its containing dimension",
+          path: ["applicabilityRules", index, "dimensionNumber"],
+        });
+      }
+      if (
+        rule.weightAdjustment.mode === "exclude_dimension_weight" &&
+        rule.weightAdjustment.excludedWeight !== dimension.maxScore
+      ) {
+        ctx.addIssue({
+          code: "custom",
+          message: "Excluded N/A weight must equal the dimension maximum",
+          path: ["applicabilityRules", index, "weightAdjustment", "excludedWeight"],
+        });
+      }
+    });
   });
 export type DimensionDefinition = z.infer<typeof DimensionDefinitionSchema>;
 

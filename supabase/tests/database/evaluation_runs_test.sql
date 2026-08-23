@@ -8,7 +8,7 @@ insert into public.evaluation_runs (call_type, rubric_version, transcript)
 values ('kickoff', 'kickoff-v1', 'Kick-off verification transcript.');
 
 insert into public.evaluation_runs (call_type, rubric_version, transcript)
-values ('coaching', 'coaching-v1', 'Coaching verification transcript.');
+values ('coaching', 'coaching-v2', 'Coaching verification transcript.');
 
 select ok(
   (select id is not null

@@ -39,6 +39,68 @@ function automaticRuleById(
   return rules.find((rule) => rule.id === ruleId);
 }
 
+function canonicalEvidenceCharacter(character: string): string {
+  if (/\s/.test(character)) return " ";
+  if (/[‘’‚‛]/.test(character)) return "'";
+  if (/[“”„‟]/.test(character)) return '"';
+  if (/[‐‑‒–—―−]/.test(character)) return "-";
+  if (character === "…") return "...";
+  return character.toLocaleLowerCase();
+}
+
+function normalizeEvidenceText(value: string): string {
+  return Array.from(value)
+    .map(canonicalEvidenceCharacter)
+    .join("")
+    .replace(/ +/g, " ")
+    .trim();
+}
+
+/**
+ * Recover the exact source slice when the model changed only casing,
+ * whitespace, or common typographic punctuation. Substantive paraphrases do
+ * not match and continue through normal validation failure/repair handling.
+ */
+function createEvidenceQuoteReconciler(transcript: string) {
+  let normalizedTranscript: string | undefined;
+  const normalizedCharacters: string[] = [];
+  const sourceStarts: number[] = [];
+  const sourceEnds: number[] = [];
+
+  return (quote: string): string | null => {
+    if (transcript.includes(quote)) return quote;
+
+    const normalizedQuote = normalizeEvidenceText(quote);
+    if (!normalizedQuote) return null;
+
+    if (normalizedTranscript === undefined) {
+      let sourceOffset = 0;
+      for (const character of transcript) {
+        const start = sourceOffset;
+        sourceOffset += character.length;
+        const normalizedCharacter = canonicalEvidenceCharacter(character);
+
+        for (const outputCharacter of normalizedCharacter) {
+          if (outputCharacter === " " && normalizedCharacters.at(-1) === " ") {
+            sourceEnds[sourceEnds.length - 1] = sourceOffset;
+            continue;
+          }
+          normalizedCharacters.push(outputCharacter);
+          sourceStarts.push(start);
+          sourceEnds.push(sourceOffset);
+        }
+      }
+      normalizedTranscript = normalizedCharacters.join("");
+    }
+
+    const matchIndex = normalizedTranscript.indexOf(normalizedQuote);
+    if (matchIndex < 0) return null;
+
+    const matchEnd = matchIndex + normalizedQuote.length - 1;
+    return transcript.slice(sourceStarts[matchIndex], sourceEnds[matchEnd]);
+  };
+}
+
 export function validateEvaluationResult(
   value: unknown,
   run: Pick<EvaluationRun, "callType" | "transcript" | "rubricVersion">
@@ -54,6 +116,7 @@ export function validateEvaluationResult(
 
   const result = contractResult.data;
   const rubric = getRubricForCallType(run.callType);
+  const reconcileEvidenceQuote = createEvidenceQuoteReconciler(run.transcript);
   const issues: string[] = [];
   if (rubric.version !== run.rubricVersion) {
     issues.push(`stored rubric ${run.rubricVersion} does not match ${rubric.version}`);
@@ -75,6 +138,33 @@ export function validateEvaluationResult(
     } else {
       appliedRuleIds.add(appliedRule.ruleId);
     }
+  });
+
+  // The model decides whether a rule condition occurred; once it records a
+  // valid rule ID, the rule's numeric effect is deterministic and server-owned.
+  appliedRuleIds.forEach((ruleId) => {
+    const rule = automaticRuleById(rubric.automaticRules, ruleId);
+    if (!rule || rule.effect.kind === "total_cap") return;
+
+    const dimension = result.dimensions[rule.effect.dimensionNumber - 1];
+    const definition = rubric.dimensions[rule.effect.dimensionNumber - 1];
+    if (!dimension || !definition || dimension.disabled) return;
+
+    const adjustedScore =
+      rule.effect.kind === "dimension_cap"
+        ? Math.min(dimension.score ?? 0, rule.effect.maxScore)
+        : rule.effect.score;
+    const adjustedBand = findScoreBand(definition, adjustedScore);
+    if (!adjustedBand) {
+      issues.push(`${rule.id} produces a score not authored by the rubric`);
+      return;
+    }
+
+    if (dimension.score !== adjustedScore) {
+      dimension.reasoning = `${dimension.reasoning} ${rule.label} was applied, setting this dimension to ${adjustedScore}/${definition.maxScore}.`;
+    }
+    dimension.score = adjustedScore;
+    dimension.band = adjustedBand.label;
   });
 
   let activeMaximum = 0;
@@ -119,10 +209,13 @@ export function validateEvaluationResult(
     }
 
     dimension.evidence.forEach((evidence, evidenceIndex) => {
-      if (!run.transcript.includes(evidence.quote)) {
+      const reconciledQuote = reconcileEvidenceQuote(evidence.quote);
+      if (reconciledQuote === null) {
         issues.push(
           `dimensions.${index}.evidence.${evidenceIndex}.quote is not an exact transcript excerpt`
         );
+      } else {
+        evidence.quote = reconciledQuote;
       }
     });
   });
@@ -138,16 +231,6 @@ export function validateEvaluationResult(
 
     if (rule.effect.kind === "total_cap") {
       expectedFinal = Math.min(expectedFinal, rule.effect.maxTotal);
-    } else if (rule.effect.kind === "dimension_cap") {
-      const dimension = result.dimensions[rule.effect.dimensionNumber - 1];
-      if (!dimension?.disabled && (dimension?.score ?? 0) > rule.effect.maxScore) {
-        issues.push(`${rule.id} dimension cap was not applied`);
-      }
-    } else if (rule.effect.kind === "force_dimension_score") {
-      const dimension = result.dimensions[rule.effect.dimensionNumber - 1];
-      if (!dimension?.disabled && dimension?.score !== rule.effect.score) {
-        issues.push(`${rule.id} forced dimension score was not applied`);
-      }
     }
   });
 

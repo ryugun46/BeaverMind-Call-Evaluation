@@ -78,6 +78,42 @@ test("Phase 2 validation rejects evidence not found verbatim in the transcript",
   );
 });
 
+test("Phase 2 reconciles formatting-only evidence differences to the exact source", () => {
+  const candidate = structuredClone(completedResult);
+  const exactQuote = candidate.dimensions[0]!.evidence[0]!.quote;
+  candidate.dimensions[0]!.evidence[0]!.quote = exactQuote
+    .toLocaleUpperCase()
+    .replaceAll(" ", "  ");
+
+  const validated = validateEvaluationResult(candidate, completedFixture);
+
+  assert.equal(validated.dimensions[0]!.evidence[0]!.quote, exactQuote);
+});
+
+test("Phase 2 applies recorded dimension rules and recalculates totals", () => {
+  const candidate = structuredClone(completedResult);
+  candidate.appliedRules.push({
+    ruleId: "KICKOFF_NO_NORTH_STAR_D4_CAP",
+    label: "No North Star Statement",
+    description: "No North Star statement was constructed.",
+    scope: "dimension",
+    affectedDimensionNumber: 4,
+    effect: "Cap D4 at 10",
+    nonRecoverable: false,
+  });
+  candidate.dimensions[3]!.score = 15;
+  candidate.dimensions[3]!.band = "ELITE";
+
+  const validated = validateEvaluationResult(candidate, completedFixture);
+
+  assert.equal(validated.dimensions[3]!.score, 10);
+  assert.equal(validated.dimensions[3]!.band, "STRONG");
+  assert.equal(
+    validated.scoreSummary.rawScore,
+    completedResult.scoreSummary.rawScore - 5
+  );
+});
+
 test("OpenRouter provider requests strict structured output and parses JSON", async () => {
   let capturedAuthorization = "";
   let capturedBody: Record<string, unknown> | undefined;
@@ -239,6 +275,36 @@ test("processor completes a claimed run after provider and rubric validation", a
   const result = await processor.processNext();
 
   assert.equal(result?.status, "completed");
+  assert.equal(updates[0]?.status, "completed");
+});
+
+test("processor requests one repair after a structured validation failure", async () => {
+  const updates: EvaluationLifecycleUpdate[] = [];
+  const invalidResult = structuredClone(completedResult);
+  invalidResult.dimensions[0]!.evidence[0]!.quote = "This quote was fabricated.";
+  let calls = 0;
+  const provider: EvaluationProvider = {
+    providerName: "test-provider",
+    modelName: "test-model",
+    async evaluate(_run, repair) {
+      calls += 1;
+      if (calls === 1) {
+        assert.equal(repair, undefined);
+        return invalidResult;
+      }
+      assert.ok(repair?.issues.some((issue) => issue.includes("evidence.0.quote")));
+      return completedResult;
+    },
+  };
+  const processor = createEvaluationProcessor(
+    repositoryThatClaims(provider, updates),
+    provider
+  );
+
+  const result = await processor.processNext();
+
+  assert.equal(result?.status, "completed");
+  assert.equal(calls, 2);
   assert.equal(updates[0]?.status, "completed");
 });
 

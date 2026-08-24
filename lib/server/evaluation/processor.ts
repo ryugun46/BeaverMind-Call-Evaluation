@@ -120,7 +120,20 @@ export function createEvaluationProcessor(
       try {
         const activeProvider = provider ?? providerFactory(claimed.modelName);
         const candidate = await activeProvider.evaluate(claimed);
-        result = validateEvaluationResult(candidate, claimed);
+        try {
+          result = validateEvaluationResult(candidate, claimed);
+        } catch (error) {
+          if (!(error instanceof EvaluationOutputValidationError)) throw error;
+
+          console.warn(`Evaluation ${claimed.id}: requesting one structured repair`, {
+            issueCount: error.issues.length,
+          });
+          const repairedCandidate = await activeProvider.evaluate(claimed, {
+            previousResult: candidate,
+            issues: error.issues.slice(0, 20),
+          });
+          result = validateEvaluationResult(repairedCandidate, claimed);
+        }
       } catch (error) {
         return persistTerminalUpdate(claimed.id, {
           status: "failed",

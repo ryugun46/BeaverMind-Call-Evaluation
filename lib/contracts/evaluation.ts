@@ -17,6 +17,8 @@
 
 import { z } from "zod";
 
+import { EvaluationModelSlugSchema } from "@/lib/evaluation-models";
+
 // ─────────────────────────────────────────────────────────────────────────────
 // § 1. Core Enums
 // ─────────────────────────────────────────────────────────────────────────────
@@ -478,6 +480,7 @@ export type EvaluationRun = z.infer<typeof EvaluationRunSchema>;
  */
 export const CreateEvaluationInputSchema = z.object({
   callType: CallTypeSchema,
+  modelSlug: EvaluationModelSlugSchema,
   transcript: z
     .string()
     .trim()

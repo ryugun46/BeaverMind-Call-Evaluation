@@ -3,12 +3,12 @@ import "server-only";
 import { z } from "zod";
 
 import { EvaluationResultSchema, type EvaluationRun } from "@/lib/contracts/evaluation";
+import { OpenRouterModelSlugSchema } from "@/lib/evaluation-models";
 import {
   getOpenRouterEnvironment,
   type OpenRouterEnvironment,
 } from "@/lib/server/evaluation/environment";
 import { buildEvaluationMessages } from "@/lib/server/evaluation/prompt";
-import { EvaluationModelSlugSchema } from "@/lib/server/repositories/evaluation-runtime-config";
 
 const OPENROUTER_CHAT_URL = "https://openrouter.ai/api/v1/chat/completions";
 const RESULT_JSON_SCHEMA = z.toJSONSchema(EvaluationResultSchema, {
@@ -68,7 +68,7 @@ export function createOpenRouterProvider(
   environment: OpenRouterEnvironment = getOpenRouterEnvironment(),
   fetchImplementation: typeof fetch = fetch
 ): EvaluationProvider {
-  const model = EvaluationModelSlugSchema.parse(modelName);
+  const model = OpenRouterModelSlugSchema.parse(modelName);
 
   return {
     providerName: "openrouter",

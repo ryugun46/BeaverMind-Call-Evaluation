@@ -2,7 +2,7 @@ begin;
 
 create extension if not exists pgtap with schema extensions;
 
-select plan(26);
+select plan(29);
 
 insert into public.evaluation_runs (call_type, rubric_version, transcript)
 values ('kickoff', 'kickoff-v1', 'Kick-off verification transcript.');
@@ -31,6 +31,34 @@ select is(
    where transcript = 'Kick-off verification transcript.'),
   'Kick-off verification transcript.',
   'transcript persists unchanged'
+);
+
+select ok(
+  (select model_provider = 'openrouter'
+      and model_name = 'openai/gpt-4.1-mini'
+   from public.evaluation_runs
+   where transcript = 'Kick-off verification transcript.'),
+  'model metadata has a safe server default'
+);
+
+select throws_ok(
+  $$insert into public.evaluation_runs
+      (call_type, rubric_version, transcript, model_provider, model_name)
+    values
+      ('kickoff', 'kickoff-v1', 'Invalid provider.', 'direct', 'openai/gpt-4.1-mini');$$,
+  '23514',
+  null,
+  'non-OpenRouter providers are rejected'
+);
+
+select throws_ok(
+  $$insert into public.evaluation_runs
+      (call_type, rubric_version, transcript, model_name)
+    values
+      ('kickoff', 'kickoff-v1', 'Invalid model.', 'not a slug');$$,
+  '23514',
+  null,
+  'invalid OpenRouter model slugs are rejected'
 );
 
 select ok(
@@ -182,14 +210,14 @@ select throws_ok(
   'public report tokens cannot change'
 );
 
-insert into public.evaluation_runs (call_type, rubric_version, transcript)
+insert into public.evaluation_runs (call_type, rubric_version, transcript, model_name)
 values
-  ('kickoff', 'kickoff-v1', 'Queue claim verification one.'),
-  ('coaching', 'coaching-v2', 'Queue claim verification two.');
+  ('kickoff', 'kickoff-v1', 'Queue claim verification one.', 'anthropic/claude-sonnet-4.6'),
+  ('coaching', 'coaching-v2', 'Queue claim verification two.', 'google/gemini-2.5-pro');
 
 create temporary table claimed_evaluation_run as
 select *
-from public.claim_next_evaluation_run('openrouter', 'provider/model');
+from public.claim_next_evaluation_run();
 
 select is(
   (select count(*)::integer from claimed_evaluation_run),
@@ -206,20 +234,20 @@ select is(
 select ok(
   (select processing_started_at is not null
       and model_provider = 'openrouter'
-      and model_name = 'provider/model'
+      and model_name = 'anthropic/claude-sonnet-4.6'
    from claimed_evaluation_run),
-  'queue claim records lifecycle and provider metadata'
+  'queue claim preserves the selected model metadata'
 );
 
 select ok(
   not has_function_privilege(
     'anon',
-    'public.claim_next_evaluation_run(text,text)',
+    'public.claim_next_evaluation_run()',
     'execute'
   )
     and not has_function_privilege(
       'authenticated',
-      'public.claim_next_evaluation_run(text,text)',
+      'public.claim_next_evaluation_run()',
       'execute'
     ),
   'browser roles cannot claim queued runs'

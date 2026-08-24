@@ -8,10 +8,18 @@ import { TranscriptInput } from "./TranscriptInput";
 import { ActionButton } from "@/components/ui/ActionButton";
 import { ArrowRight, ShieldCheck } from "lucide-react";
 import { CreateEvaluationResponseSchema } from "@/lib/contracts/evaluation";
+import {
+  DEFAULT_EVALUATION_MODEL,
+  type EvaluationModelSlug,
+} from "@/lib/evaluation-models";
+import { ModelSelector } from "./ModelSelector";
 
 export function SubmissionForm() {
   const router = useRouter();
   const [callType, setCallType] = useState<CallType>("kickoff");
+  const [modelSlug, setModelSlug] = useState<EvaluationModelSlug>(
+    DEFAULT_EVALUATION_MODEL
+  );
   const [transcript, setTranscript] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -49,7 +57,7 @@ export function SubmissionForm() {
       const response = await fetch("/api/evaluations", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ callType, transcript: trimmed }),
+        body: JSON.stringify({ callType, modelSlug, transcript: trimmed }),
       });
       const body: unknown = await response.json();
       if (!response.ok) {
@@ -84,7 +92,17 @@ export function SubmissionForm() {
         disabled={isSubmitting}
       />
 
-      {/* 2. Transcript Input Area */}
+      {/* 2. Model Selection */}
+      <ModelSelector
+        value={modelSlug}
+        onChange={(model) => {
+          setModelSlug(model);
+          if (error) setError(null);
+        }}
+        disabled={isSubmitting}
+      />
+
+      {/* 3. Transcript Input Area */}
       <TranscriptInput
         value={transcript}
         onChange={(val) => {
@@ -96,7 +114,7 @@ export function SubmissionForm() {
         disabled={isSubmitting}
       />
 
-      {/* 3. Action Submission Row & Reassurance */}
+      {/* 4. Action Submission Row & Reassurance */}
       <div className="pt-3 border-t border-zinc-200/80 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4">
         <div className="text-xs text-zinc-500 flex items-center gap-2">
           <ShieldCheck className="w-4 h-4 text-emerald-600 shrink-0" />

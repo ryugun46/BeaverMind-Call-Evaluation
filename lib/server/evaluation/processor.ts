@@ -15,14 +15,16 @@ import {
 import {
   createEvaluationRunsRepository,
   type EvaluationLifecycleUpdate,
+  type PersistedEvaluationRun,
 } from "@/lib/server/repositories/evaluation-runs";
-import { getEvaluationModelSlug } from "@/lib/server/repositories/evaluation-runtime-config";
 import { getServerSupabaseClient } from "@/lib/server/supabase";
 
 export type EvaluationProcessingRepository = {
-  claimNextQueued(modelProvider: string, modelName: string): Promise<EvaluationRun | null>;
+  claimNextQueued(): Promise<PersistedEvaluationRun | null>;
   updateLifecycle(id: string, update: EvaluationLifecycleUpdate): Promise<EvaluationRun>;
 };
+
+type EvaluationProviderFactory = (modelName: string) => EvaluationProvider;
 
 function toEvaluationError(error: unknown): EvaluationError {
   if (error instanceof OpenRouterRequestError) {
@@ -73,19 +75,15 @@ export function createEvaluationProcessor(
     getServerSupabaseClient()
   ),
   provider?: EvaluationProvider,
-  resolveModel: () => Promise<string> = getEvaluationModelSlug
+  providerFactory: EvaluationProviderFactory = createOpenRouterProvider
 ) {
   return {
     async processNext(): Promise<EvaluationRun | null> {
-      const activeProvider =
-        provider ?? createOpenRouterProvider(await resolveModel());
-      const claimed = await repository.claimNextQueued(
-        activeProvider.providerName,
-        activeProvider.modelName
-      );
+      const claimed = await repository.claimNextQueued();
       if (!claimed) return null;
 
       try {
+        const activeProvider = provider ?? providerFactory(claimed.modelName);
         const candidate = await activeProvider.evaluate(claimed);
         const result: EvaluationResult = validateEvaluationResult(candidate, claimed);
         return await repository.updateLifecycle(claimed.id, {

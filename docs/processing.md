@@ -4,7 +4,8 @@
 
 ```text
 Browser POST /api/evaluations
-  -> evaluation_runs (queued)
+  -> validated model allowlist
+  -> evaluation_runs (queued with selected model)
   -> Vercel waitUntil background task
   -> permanent /evaluation/{public_token} URL
 
@@ -40,21 +41,19 @@ SUPABASE_SECRET_KEY
 OPENROUTER_API_KEY
 ```
 
-The selected model is stored in the server-only
-`public.evaluation_runtime_config` singleton. It must be a `provider/model` slug
-whose OpenRouter model entry supports structured outputs and the requested
-parameters. The processor reads it immediately before claiming a run, so model
-changes do not require a redeploy and do not affect runs already processing.
-Optional timeout, output-token, attribution, and polling settings are documented
-in `.env.example`.
+The user selects a model for each submission in the frontend. The shared
+allowlist in `lib/evaluation-models.ts` is also enforced by the POST contract,
+so changing request JSON cannot select an unreviewed or unexpectedly expensive
+model. The selected OpenRouter slug is persisted on `evaluation_runs` before
+the job is queued; the processor constructs its provider from that run after an
+atomic claim. Concurrent runs can therefore use different models safely.
 
-Change the selected model from the Supabase SQL Editor:
-
-```sql
-update public.evaluation_runtime_config
-set model_slug = 'openai/gpt-4.1-mini'
-where id = 1;
-```
+The current choices are GPT-4.1 Mini, GPT-5.6 Luna/Terra/Sol, Claude Haiku
+4.5/Sonnet 4.6/Opus 4.8, and Gemini 3.7 Flash/3.5 Flash/2.5 Pro. They were
+verified against OpenRouter's model catalog for strict structured-output support
+on 2026-08-25. Availability can change, so review the catalog before adding or
+removing an allowlisted slug. Optional timeout, output-token, attribution, and
+polling settings are documented in `.env.example`.
 
 ## Run locally
 

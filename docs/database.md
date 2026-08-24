@@ -4,30 +4,29 @@
 
 `public.evaluation_runs` is the lifecycle owner and the single persisted entity
 for this intentionally small application. A run owns its opaque public token,
-call type, transcript, lifecycle timestamps, optional model metadata, structured
+call type, transcript, lifecycle timestamps, selected model metadata, structured
 failure fields, and eventual output. Keeping one table avoids
 prematurely normalizing the 12 dimensions and their evidence into tables that
 would add joins without improving this use case.
 
 `structured_result` is JSONB because `EvaluationResult` is nested and is read as
 one report. The authoritative contract remains
-`lib/contracts/evaluation.ts` (`EvaluationResultSchema`); the future server must
-The server repository validates it with that Zod schema before writing and after
-reading.
+`lib/contracts/evaluation.ts` (`EvaluationResultSchema`). The server repository
+validates it with that Zod schema before writing and after reading.
 Failures use `error_code`, `error_message`, and optional `error_details`; the
 repository maps them to `EvaluationErrorSchema`. No second handwritten domain
 interface is introduced.
 
 The full transcript is retained so an evaluation can be reproduced, audited,
 or retried. It is deliberately not part of the public report response contract.
-The optional `model_provider` and `model_name` values plus the required
-`rubric_version` provide low-cost reproducibility metadata and never contain
-credentials.
+The required `model_provider` and `model_name` values plus `rubric_version`
+provide low-cost reproducibility metadata and never contain credentials. The
+frontend chooses from a code-owned, server-validated allowlist and the repository
+persists the choice when creating the run. The queue claim preserves it.
 
-`public.evaluation_runtime_config` is a separate server-only singleton because
-the selected provider model is operational configuration, not part of an
-evaluation aggregate. Operators update it through the Supabase dashboard; each
-run records the model chosen when it is claimed.
+`public.evaluation_runtime_config` remains in the migration history for
+backwards compatibility but is no longer read by the processor. Model selection
+is not configured through that table.
 
 ## Lifecycle
 
@@ -70,7 +69,10 @@ remote migration history matches the repository filenames.
 
 Phase 2 adds
 `supabase/migrations/20260824132414_add_evaluation_run_claim_function.sql`, a
-server-only atomic queue claim using `FOR UPDATE SKIP LOCKED`.
+server-only atomic queue claim using `FOR UPDATE SKIP LOCKED`, and
+`supabase/migrations/20260824211716_select_model_per_evaluation.sql`, which
+makes model metadata required and changes the claim to preserve the per-run
+selection.
 
 For a local Supabase stack (Docker required):
 

@@ -3,15 +3,11 @@ import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { z } from "zod";
 
+import { OpenRouterModelSlugSchema } from "@/lib/evaluation-models";
 import { getServerSupabaseClient } from "@/lib/server/supabase";
 
-export const EvaluationModelSlugSchema = z
-  .string()
-  .trim()
-  .regex(/^[^\s/]+\/[^\s/]+$/, "Model must use an OpenRouter provider/model slug");
-
 const EvaluationRuntimeConfigRowSchema = z.object({
-  model_slug: EvaluationModelSlugSchema,
+  model_slug: OpenRouterModelSlugSchema,
 });
 
 export class EvaluationRuntimeConfigRepositoryError extends Error {

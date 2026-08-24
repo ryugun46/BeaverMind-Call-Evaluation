@@ -12,6 +12,7 @@ import {
   type CreateEvaluationInput,
   type EvaluationRun,
 } from "@/lib/contracts/evaluation";
+import { OpenRouterModelSlugSchema } from "@/lib/evaluation-models";
 import { getRubricForCallType } from "@/lib/rubrics";
 import { getServerSupabaseClient } from "@/lib/server/supabase";
 
@@ -34,8 +35,16 @@ export type EvaluationLifecycleUpdate = z.infer<
   typeof EvaluationLifecycleUpdateSchema
 >;
 
+export const PersistedEvaluationRunSchema = EvaluationRunSchema.safeExtend({
+  modelProvider: z.literal("openrouter"),
+  modelName: OpenRouterModelSlugSchema,
+});
+export type PersistedEvaluationRun = z.infer<
+  typeof PersistedEvaluationRunSchema
+>;
+
 const CreatedEvaluationRunSchema = z.object({
-  run: EvaluationRunSchema,
+  run: PersistedEvaluationRunSchema,
   publicToken: UUIDSchema,
 });
 export type CreatedEvaluationRun = z.infer<typeof CreatedEvaluationRunSchema>;
@@ -47,6 +56,8 @@ const RUN_COLUMNS = [
   "transcript",
   "status",
   "rubric_version",
+  "model_provider",
+  "model_name",
   "structured_result",
   "error_code",
   "error_message",
@@ -87,7 +98,7 @@ function asRow(value: unknown): Record<string, unknown> {
   return value as Record<string, unknown>;
 }
 
-function mapEvaluationRun(value: unknown): EvaluationRun {
+function mapEvaluationRun(value: unknown): PersistedEvaluationRun {
   const row = asRow(value);
   const error =
     row.error_code === null || row.error_code === undefined
@@ -100,10 +111,12 @@ function mapEvaluationRun(value: unknown): EvaluationRun {
             : { details: row.error_details }),
         });
 
-  return EvaluationRunSchema.parse({
+  return PersistedEvaluationRunSchema.parse({
     id: row.id,
     callType: row.call_type,
     rubricVersion: row.rubric_version,
+    modelProvider: row.model_provider,
+    modelName: row.model_name,
     status: row.status,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -135,6 +148,8 @@ export function createEvaluationRunsRepository(client: SupabaseClient) {
           call_type: parsed.callType,
           transcript: parsed.transcript,
           rubric_version: rubricVersion,
+          model_provider: "openrouter",
+          model_name: parsed.modelSlug,
         })
         .select(RUN_COLUMNS)
         .single();
@@ -147,7 +162,7 @@ export function createEvaluationRunsRepository(client: SupabaseClient) {
       });
     },
 
-    async getById(id: string): Promise<EvaluationRun | null> {
+    async getById(id: string): Promise<PersistedEvaluationRun | null> {
       const parsedId = UUIDSchema.parse(id);
       const { data, error } = await client
         .from("evaluation_runs")
@@ -159,7 +174,7 @@ export function createEvaluationRunsRepository(client: SupabaseClient) {
       return data === null ? null : mapEvaluationRun(data);
     },
 
-    async getByPublicToken(publicToken: string): Promise<EvaluationRun | null> {
+    async getByPublicToken(publicToken: string): Promise<PersistedEvaluationRun | null> {
       const parsedToken = UUIDSchema.parse(publicToken);
       const { data, error } = await client
         .from("evaluation_runs")
@@ -171,17 +186,9 @@ export function createEvaluationRunsRepository(client: SupabaseClient) {
       return data === null ? null : mapEvaluationRun(data);
     },
 
-    async claimNextQueued(
-      modelProvider: string,
-      modelName: string
-    ): Promise<EvaluationRun | null> {
-      const provider = z.string().trim().min(1).parse(modelProvider);
-      const model = z.string().trim().min(1).parse(modelName);
+    async claimNextQueued(): Promise<PersistedEvaluationRun | null> {
       const { data, error } = await client
-        .rpc("claim_next_evaluation_run", {
-          p_model_provider: provider,
-          p_model_name: model,
-        })
+        .rpc("claim_next_evaluation_run")
         .maybeSingle();
 
       throwIfDatabaseError("claim next queued evaluation run", error);
@@ -245,11 +252,8 @@ export function updateEvaluationRunLifecycle(
   );
 }
 
-export function claimNextQueuedEvaluationRun(
-  modelProvider: string,
-  modelName: string
-): Promise<EvaluationRun | null> {
+export function claimNextQueuedEvaluationRun(): Promise<PersistedEvaluationRun | null> {
   return createEvaluationRunsRepository(
     getServerSupabaseClient()
-  ).claimNextQueued(modelProvider, modelName);
+  ).claimNextQueued();
 }

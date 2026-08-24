@@ -8,9 +8,12 @@ import {
   createEvaluationRunsRepository,
 } from "@/lib/server/repositories/evaluation-runs";
 import {
-  EvaluationModelSlugSchema,
   createEvaluationRuntimeConfigRepository,
 } from "@/lib/server/repositories/evaluation-runtime-config";
+import {
+  EvaluationModelSlugSchema,
+  OpenRouterModelSlugSchema,
+} from "@/lib/evaluation-models";
 
 const RUN_ID = "22222222-2222-4222-8222-222222222222";
 const PUBLIC_TOKEN = "11111111-1111-4111-8111-111111111111";
@@ -23,6 +26,8 @@ const queuedRow = {
   transcript: "A persisted transcript.",
   status: "queued",
   rubric_version: "kickoff-v1",
+  model_provider: "openrouter",
+  model_name: "openai/gpt-4.1-mini",
   structured_result: null,
   error_code: null,
   error_message: null,
@@ -117,6 +122,7 @@ test("repository creates a queued run with the authoritative rubric version", as
 
   const created = await repository.create({
     callType: "kickoff",
+    modelSlug: "anthropic/claude-sonnet-4.6",
     transcript: "  A persisted transcript.  ",
   });
 
@@ -130,6 +136,8 @@ test("repository creates a queued run with the authoritative rubric version", as
       call_type: "kickoff",
       transcript: "A persisted transcript.",
       rubric_version: "kickoff-v1",
+      model_provider: "openrouter",
+      model_name: "anthropic/claude-sonnet-4.6",
     },
   });
 });
@@ -162,7 +170,11 @@ test("repository rejects an oversized UTF-8 transcript before querying", async (
   const transcript = `${"a".repeat(MAX_TRANSCRIPT_BYTES)}é`;
 
   await assert.rejects(
-    repository.create({ callType: "coaching", transcript }),
+    repository.create({
+      callType: "coaching",
+      modelSlug: "google/gemini-3.7-flash",
+      transcript,
+    }),
     TranscriptTooLargeError
   );
   assert.equal(fake.requests.length, 0);
@@ -178,16 +190,13 @@ test("repository atomically claims the next queued run through the server RPC", 
     { data: processingRow, error: null },
   ]);
 
-  const claimed = await repository.claimNextQueued("openrouter", "provider/model");
+  const claimed = await repository.claimNextQueued();
 
   assert.equal(claimed?.status, "processing");
   assert.deepEqual(fake.requests[0], {
     table: "claim_next_evaluation_run",
     action: "rpc",
-    values: {
-      p_model_provider: "openrouter",
-      p_model_name: "provider/model",
-    },
+    values: undefined,
   });
 });
 
@@ -216,4 +225,11 @@ test("runtime model selection requires an OpenRouter provider/model slug", () =>
     "openai/gpt-4.1-mini"
   );
   assert.throws(() => EvaluationModelSlugSchema.parse("gpt-4.1-mini"));
+  assert.equal(
+    OpenRouterModelSlugSchema.parse("provider/retired-model"),
+    "provider/retired-model"
+  );
+  assert.throws(() =>
+    EvaluationModelSlugSchema.parse("provider/retired-model")
+  );
 });

@@ -160,15 +160,39 @@ describe("API input and enums", () => {
 
   it("rejects empty transcripts and accepts approximately 65 KB", () => {
     assert.equal(
-      CreateEvaluationInputSchema.safeParse({ callType: "kickoff", transcript: "   " }).success,
+      CreateEvaluationInputSchema.safeParse({
+        callType: "kickoff",
+        modelSlug: "openai/gpt-4.1-mini",
+        transcript: "   ",
+      }).success,
       false
     );
     assert.equal(
       CreateEvaluationInputSchema.safeParse({
         callType: "coaching",
+        modelSlug: "anthropic/claude-sonnet-4.6",
         transcript: "x".repeat(65 * 1024),
       }).success,
       true
+    );
+  });
+
+  it("accepts selectable OpenRouter models and rejects arbitrary model slugs", () => {
+    assert.equal(
+      CreateEvaluationInputSchema.safeParse({
+        callType: "kickoff",
+        modelSlug: "google/gemini-2.5-pro",
+        transcript: "A sufficiently detailed coaching transcript.",
+      }).success,
+      true
+    );
+    assert.equal(
+      CreateEvaluationInputSchema.safeParse({
+        callType: "kickoff",
+        modelSlug: "openai/unreviewed-expensive-model",
+        transcript: "A sufficiently detailed coaching transcript.",
+      }).success,
+      false
     );
   });
 

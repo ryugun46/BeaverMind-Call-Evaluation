@@ -21,6 +21,7 @@ import {
   validateEvaluationResult,
 } from "@/lib/server/evaluation/validate-result";
 import type { EvaluationLifecycleUpdate } from "@/lib/server/repositories/evaluation-runs";
+import { PersistedEvaluationRunSchema } from "@/lib/server/repositories/evaluation-runs";
 
 const completedFixtureCandidate = getEvaluationById("demo-completed-kickoff");
 if (!completedFixtureCandidate?.result) {
@@ -29,8 +30,10 @@ if (!completedFixtureCandidate?.result) {
 const completedFixture = completedFixtureCandidate;
 const completedResult = EvaluationResultSchema.parse(completedFixture.result);
 
-const processingRun = EvaluationRunSchema.parse({
+const processingRun = PersistedEvaluationRunSchema.parse({
   ...completedFixture,
+  modelProvider: "openrouter",
+  modelName: "anthropic/claude-sonnet-4.6",
   status: "processing",
   processingStartedAt: completedFixture.createdAt,
   completedAt: null,
@@ -92,9 +95,7 @@ function repositoryThatClaims(
 ): EvaluationProcessingRepository {
   let claimed = false;
   return {
-    async claimNextQueued(modelProvider, modelName) {
-      assert.equal(modelProvider, provider.providerName);
-      assert.equal(modelName, provider.modelName);
+    async claimNextQueued() {
       if (claimed) return null;
       claimed = true;
       return processingRun;
@@ -140,6 +141,68 @@ test("processor completes a claimed run after provider and rubric validation", a
 
   assert.equal(result?.status, "completed");
   assert.equal(updates[0]?.status, "completed");
+});
+
+test("processor constructs OpenRouter with the model stored on the claimed run", async () => {
+  const updates: EvaluationLifecycleUpdate[] = [];
+  let constructedModel = "";
+  const processor = createEvaluationProcessor(
+    repositoryThatClaims(
+      {
+        providerName: "unused",
+        modelName: "unused/model",
+        async evaluate() {
+          return completedResult;
+        },
+      },
+      updates
+    ),
+    undefined,
+    (modelName) => {
+      constructedModel = modelName;
+      return {
+        providerName: "openrouter",
+        modelName,
+        async evaluate() {
+          return completedResult;
+        },
+      };
+    }
+  );
+
+  const result = await processor.processNext();
+
+  assert.equal(constructedModel, "anthropic/claude-sonnet-4.6");
+  assert.equal(result?.status, "completed");
+});
+
+test("processor marks a claimed run failed when provider construction fails", async () => {
+  const updates: EvaluationLifecycleUpdate[] = [];
+  const processor = createEvaluationProcessor(
+    repositoryThatClaims(
+      {
+        providerName: "unused",
+        modelName: "unused/model",
+        async evaluate() {
+          return completedResult;
+        },
+      },
+      updates
+    ),
+    undefined,
+    () => {
+      throw new Error("Invalid evaluation environment");
+    }
+  );
+
+  const result = await processor.processNext();
+
+  assert.equal(result?.status, "failed");
+  const failure = updates[0];
+  assert.equal(failure?.status, "failed");
+  if (failure?.status === "failed") {
+    assert.equal(failure.error.code, "WORKER_ERROR");
+  }
 });
 
 test("processor persists a structured provider failure", async () => {

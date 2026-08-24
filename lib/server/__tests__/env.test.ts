@@ -4,7 +4,10 @@ import test from "node:test";
 
 import { getServerEnvironment } from "@/lib/server/env";
 import { createServerSupabaseClient } from "@/lib/server/supabase";
-import { getOpenRouterEnvironment } from "@/lib/server/evaluation/environment";
+import {
+  EvaluationEnvironmentError,
+  getOpenRouterEnvironment,
+} from "@/lib/server/evaluation/environment";
 
 test("server environment accepts only the required backend credentials", () => {
   const environment = getServerEnvironment({
@@ -87,6 +90,17 @@ test("evaluation environment validates OpenRouter worker configuration", () => {
   assert.equal(environment.EVALUATION_WORKER_POLL_MS, 2_000);
   assert.throws(
     () => getOpenRouterEnvironment({ OPENROUTER_API_KEY: "" }),
-    /OPENROUTER_API_KEY/
+    EvaluationEnvironmentError
+  );
+});
+
+test("evaluation environment accepts the lowercase Beaver-prefixed OpenRouter key", () => {
+  const environment = getOpenRouterEnvironment({
+    beaver_OPENROUTER_API_KEY: "prefixed-openrouter-secret",
+  });
+
+  assert.equal(
+    environment.OPENROUTER_API_KEY,
+    "prefixed-openrouter-secret"
   );
 });

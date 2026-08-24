@@ -6,7 +6,10 @@ import {
   EvaluationRunSchema,
 } from "@/lib/contracts/evaluation";
 import { getEvaluationById } from "@/lib/fixtures/evaluation-fixtures";
-import { getOpenRouterEnvironment } from "@/lib/server/evaluation/environment";
+import {
+  EvaluationEnvironmentError,
+  getOpenRouterEnvironment,
+} from "@/lib/server/evaluation/environment";
 import {
   createOpenRouterProvider,
   OpenRouterRequestError,
@@ -191,7 +194,7 @@ test("processor marks a claimed run failed when provider construction fails", as
     ),
     undefined,
     () => {
-      throw new Error("Invalid evaluation environment");
+      throw new EvaluationEnvironmentError("OPENROUTER_API_KEY is required");
     }
   );
 
@@ -201,7 +204,11 @@ test("processor marks a claimed run failed when provider construction fails", as
   const failure = updates[0];
   assert.equal(failure?.status, "failed");
   if (failure?.status === "failed") {
-    assert.equal(failure.error.code, "WORKER_ERROR");
+    assert.equal(failure.error.code, "WORKER_CONFIGURATION_ERROR");
+    assert.equal(
+      failure.error.message,
+      "The evaluation worker is not configured correctly."
+    );
   }
 });
 

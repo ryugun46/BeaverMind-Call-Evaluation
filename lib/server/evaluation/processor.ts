@@ -7,6 +7,7 @@ import type {
   EvaluationResult,
   EvaluationRun,
 } from "@/lib/contracts/evaluation";
+import { EvaluationEnvironmentError } from "@/lib/server/evaluation/environment";
 import { createOpenRouterProvider, OpenRouterRequestError, type EvaluationProvider } from "@/lib/server/evaluation/openrouter";
 import {
   EvaluationOutputValidationError,
@@ -27,6 +28,13 @@ export type EvaluationProcessingRepository = {
 type EvaluationProviderFactory = (modelName: string) => EvaluationProvider;
 
 function toEvaluationError(error: unknown): EvaluationError {
+  if (error instanceof EvaluationEnvironmentError) {
+    return {
+      code: "WORKER_CONFIGURATION_ERROR",
+      message: "The evaluation worker is not configured correctly.",
+    };
+  }
+
   if (error instanceof OpenRouterRequestError) {
     return {
       code: "OPENROUTER_ERROR",

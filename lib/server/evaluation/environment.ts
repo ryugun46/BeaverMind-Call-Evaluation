@@ -15,17 +15,42 @@ export type OpenRouterEnvironment = z.infer<typeof OpenRouterEnvironmentSchema>;
 
 let cachedEnvironment: OpenRouterEnvironment | undefined;
 
+export class EvaluationEnvironmentError extends Error {
+  constructor(details: string) {
+    super(`Invalid evaluation environment: ${details}`);
+    this.name = "EvaluationEnvironmentError";
+  }
+}
+
+function firstConfiguredValue(
+  source: Readonly<Record<string, string | undefined>>,
+  names: readonly string[]
+): string | undefined {
+  for (const name of names) {
+    const value = source[name]?.trim();
+    if (value) return value;
+  }
+  return undefined;
+}
+
 export function getOpenRouterEnvironment(
   source: Readonly<Record<string, string | undefined>> = process.env
 ): OpenRouterEnvironment {
   if (source === process.env && cachedEnvironment) return cachedEnvironment;
 
-  const parsed = OpenRouterEnvironmentSchema.safeParse(source);
+  const parsed = OpenRouterEnvironmentSchema.safeParse({
+    ...source,
+    OPENROUTER_API_KEY: firstConfiguredValue(source, [
+      "OPENROUTER_API_KEY",
+      "beaver_OPENROUTER_API_KEY",
+      "BEAVER_OPENROUTER_API_KEY",
+    ]),
+  });
   if (!parsed.success) {
     const details = parsed.error.issues
       .map((issue) => `${issue.path.join(".")}: ${issue.message}`)
       .join("; ");
-    throw new Error(`Invalid evaluation environment: ${details}`);
+    throw new EvaluationEnvironmentError(details);
   }
 
   if (source === process.env) cachedEnvironment = parsed.data;

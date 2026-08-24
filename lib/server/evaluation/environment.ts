@@ -4,10 +4,6 @@ import { z } from "zod";
 
 const OpenRouterEnvironmentSchema = z.object({
   OPENROUTER_API_KEY: z.string().trim().min(1, "OPENROUTER_API_KEY is required"),
-  OPENROUTER_MODEL: z
-    .string()
-    .trim()
-    .regex(/^[^/]+\/[^/]+$/, "OPENROUTER_MODEL must use a provider/model slug"),
   OPENROUTER_SITE_URL: z.string().trim().url().optional(),
   OPENROUTER_APP_TITLE: z.string().trim().min(1).default("BeaverMind Call Evaluation"),
   OPENROUTER_TIMEOUT_MS: z.coerce.number().int().min(1_000).max(300_000).default(180_000),

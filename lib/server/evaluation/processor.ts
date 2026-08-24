@@ -16,6 +16,7 @@ import {
   createEvaluationRunsRepository,
   type EvaluationLifecycleUpdate,
 } from "@/lib/server/repositories/evaluation-runs";
+import { getEvaluationModelSlug } from "@/lib/server/repositories/evaluation-runtime-config";
 import { getServerSupabaseClient } from "@/lib/server/supabase";
 
 export type EvaluationProcessingRepository = {
@@ -71,18 +72,21 @@ export function createEvaluationProcessor(
   repository: EvaluationProcessingRepository = createEvaluationRunsRepository(
     getServerSupabaseClient()
   ),
-  provider: EvaluationProvider = createOpenRouterProvider()
+  provider?: EvaluationProvider,
+  resolveModel: () => Promise<string> = getEvaluationModelSlug
 ) {
   return {
     async processNext(): Promise<EvaluationRun | null> {
+      const activeProvider =
+        provider ?? createOpenRouterProvider(await resolveModel());
       const claimed = await repository.claimNextQueued(
-        provider.providerName,
-        provider.modelName
+        activeProvider.providerName,
+        activeProvider.modelName
       );
       if (!claimed) return null;
 
       try {
-        const candidate = await provider.evaluate(claimed);
+        const candidate = await activeProvider.evaluate(claimed);
         const result: EvaluationResult = validateEvaluationResult(candidate, claimed);
         return await repository.updateLifecycle(claimed.id, {
           status: "completed",

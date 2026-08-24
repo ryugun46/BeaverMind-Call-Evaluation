@@ -7,6 +7,10 @@ import {
   TranscriptTooLargeError,
   createEvaluationRunsRepository,
 } from "@/lib/server/repositories/evaluation-runs";
+import {
+  EvaluationModelSlugSchema,
+  createEvaluationRuntimeConfigRepository,
+} from "@/lib/server/repositories/evaluation-runtime-config";
 
 const RUN_ID = "22222222-2222-4222-8222-222222222222";
 const PUBLIC_TOKEN = "11111111-1111-4111-8111-111111111111";
@@ -185,4 +189,31 @@ test("repository atomically claims the next queued run through the server RPC", 
       p_model_name: "provider/model",
     },
   });
+});
+
+test("runtime configuration repository retrieves a validated model slug", async () => {
+  const fake = new FakeClient([
+    { data: { model_slug: "anthropic/claude-sonnet-4" }, error: null },
+  ]);
+  const repository = createEvaluationRuntimeConfigRepository(
+    fake as unknown as SupabaseClient
+  );
+
+  assert.equal(
+    await repository.getModelSlug(),
+    "anthropic/claude-sonnet-4"
+  );
+  assert.deepEqual(fake.requests[0], {
+    table: "evaluation_runtime_config",
+    action: "select",
+    filter: ["id", 1],
+  });
+});
+
+test("runtime model selection requires an OpenRouter provider/model slug", () => {
+  assert.equal(
+    EvaluationModelSlugSchema.parse("openai/gpt-4.1-mini"),
+    "openai/gpt-4.1-mini"
+  );
+  assert.throws(() => EvaluationModelSlugSchema.parse("gpt-4.1-mini"));
 });

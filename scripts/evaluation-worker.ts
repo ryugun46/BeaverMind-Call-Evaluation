@@ -3,22 +3,17 @@ import { loadEnvConfig } from "@next/env";
 loadEnvConfig(process.cwd());
 
 async function main() {
-  const [{ getOpenRouterEnvironment }, { createOpenRouterProvider }, worker] =
-    await Promise.all([
+  const [{ getOpenRouterEnvironment }, worker] = await Promise.all([
       import("@/lib/server/evaluation/environment"),
-      import("@/lib/server/evaluation/openrouter"),
       import("@/lib/server/evaluation/processor"),
     ]);
 
   const environment = getOpenRouterEnvironment();
-  const provider = createOpenRouterProvider(environment);
   const abortController = new AbortController();
   process.once("SIGINT", () => abortController.abort());
   process.once("SIGTERM", () => abortController.abort());
 
-  console.log(
-    `Evaluation worker started with ${provider.providerName}/${provider.modelName}`
-  );
+  console.log("Evaluation worker started with database-managed model selection");
   await worker.runEvaluationWorker({
     pollIntervalMs: environment.EVALUATION_WORKER_POLL_MS,
     signal: abortController.signal,

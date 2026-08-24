@@ -8,6 +8,7 @@ import {
   type OpenRouterEnvironment,
 } from "@/lib/server/evaluation/environment";
 import { buildEvaluationMessages } from "@/lib/server/evaluation/prompt";
+import { EvaluationModelSlugSchema } from "@/lib/server/repositories/evaluation-runtime-config";
 
 const OPENROUTER_CHAT_URL = "https://openrouter.ai/api/v1/chat/completions";
 const RESULT_JSON_SCHEMA = z.toJSONSchema(EvaluationResultSchema, {
@@ -63,12 +64,15 @@ function safeProviderError(value: unknown): { code?: string; message?: string } 
 }
 
 export function createOpenRouterProvider(
+  modelName: string,
   environment: OpenRouterEnvironment = getOpenRouterEnvironment(),
   fetchImplementation: typeof fetch = fetch
 ): EvaluationProvider {
+  const model = EvaluationModelSlugSchema.parse(modelName);
+
   return {
     providerName: "openrouter",
-    modelName: environment.OPENROUTER_MODEL,
+    modelName: model,
 
     async evaluate(run) {
       const headers: Record<string, string> = {
@@ -85,7 +89,7 @@ export function createOpenRouterProvider(
         headers,
         signal: AbortSignal.timeout(environment.OPENROUTER_TIMEOUT_MS),
         body: JSON.stringify({
-          model: environment.OPENROUTER_MODEL,
+          model,
           messages: buildEvaluationMessages(run),
           max_tokens: environment.OPENROUTER_MAX_TOKENS,
           stream: false,

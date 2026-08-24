@@ -38,13 +38,23 @@ Copy `.env.example` to `.env.local` and set:
 SUPABASE_URL
 SUPABASE_SECRET_KEY
 OPENROUTER_API_KEY
-OPENROUTER_MODEL
 ```
 
-`OPENROUTER_MODEL` must be a `provider/model` slug whose OpenRouter model entry
-supports structured outputs and the requested parameters. Optional timeout,
-output-token, attribution, and polling settings are documented in
-`.env.example`.
+The selected model is stored in the server-only
+`public.evaluation_runtime_config` singleton. It must be a `provider/model` slug
+whose OpenRouter model entry supports structured outputs and the requested
+parameters. The processor reads it immediately before claiming a run, so model
+changes do not require a redeploy and do not affect runs already processing.
+Optional timeout, output-token, attribution, and polling settings are documented
+in `.env.example`.
+
+Change the selected model from the Supabase SQL Editor:
+
+```sql
+update public.evaluation_runtime_config
+set model_slug = 'openai/gpt-4.1-mini'
+where id = 1;
+```
 
 ## Run locally
 

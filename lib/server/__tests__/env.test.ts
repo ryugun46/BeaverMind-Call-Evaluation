@@ -39,6 +39,10 @@ test("server client and environment modules are explicitly server-only", async (
     readFile(new URL("../env.ts", import.meta.url), "utf8"),
     readFile(new URL("../supabase.ts", import.meta.url), "utf8"),
     readFile(new URL("../repositories/evaluation-runs.ts", import.meta.url), "utf8"),
+    readFile(
+      new URL("../repositories/evaluation-runtime-config.ts", import.meta.url),
+      "utf8"
+    ),
     readFile(new URL("../evaluation/environment.ts", import.meta.url), "utf8"),
   ]);
 
@@ -51,14 +55,12 @@ test("server client and environment modules are explicitly server-only", async (
 test("evaluation environment validates OpenRouter worker configuration", () => {
   const environment = getOpenRouterEnvironment({
     OPENROUTER_API_KEY: "openrouter-secret",
-    OPENROUTER_MODEL: "provider/model",
   });
 
-  assert.equal(environment.OPENROUTER_MODEL, "provider/model");
   assert.equal(environment.OPENROUTER_TIMEOUT_MS, 180_000);
   assert.equal(environment.EVALUATION_WORKER_POLL_MS, 2_000);
   assert.throws(
-    () => getOpenRouterEnvironment({ OPENROUTER_MODEL: "invalid" }),
-    /OPENROUTER_API_KEY.*OPENROUTER_MODEL/
+    () => getOpenRouterEnvironment({ OPENROUTER_API_KEY: "" }),
+    /OPENROUTER_API_KEY/
   );
 });

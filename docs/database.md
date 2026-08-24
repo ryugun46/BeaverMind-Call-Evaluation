@@ -24,6 +24,11 @@ The optional `model_provider` and `model_name` values plus the required
 `rubric_version` provide low-cost reproducibility metadata and never contain
 credentials.
 
+`public.evaluation_runtime_config` is a separate server-only singleton because
+the selected provider model is operational configuration, not part of an
+evaluation aggregate. Operators update it through the Supabase dashboard; each
+run records the model chosen when it is claimed.
+
 ## Lifecycle
 
 ```text

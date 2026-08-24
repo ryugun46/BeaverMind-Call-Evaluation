@@ -60,9 +60,8 @@ test("OpenRouter provider requests strict structured output and parses JSON", as
   let capturedBody: Record<string, unknown> | undefined;
   const environment = getOpenRouterEnvironment({
     OPENROUTER_API_KEY: "openrouter-secret",
-    OPENROUTER_MODEL: "provider/model",
   });
-  const provider = createOpenRouterProvider(environment, async (_input, init) => {
+  const provider = createOpenRouterProvider("provider/model", environment, async (_input, init) => {
     capturedAuthorization = new Headers(init?.headers).get("Authorization") ?? "";
     capturedBody = JSON.parse(String(init?.body)) as Record<string, unknown>;
     return new Response(

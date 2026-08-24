@@ -1,12 +1,14 @@
 import React from "react";
+import { z } from "zod";
 import { getPublicEvaluationById } from "@/lib/fixtures/evaluation-fixtures";
 import { PageContainer } from "@/components/layout/PageContainer";
-import { QueuedState } from "@/components/evaluation/QueuedState";
-import { ProcessingState } from "@/components/evaluation/ProcessingState";
-import { FailedState } from "@/components/evaluation/FailedState";
 import { NotFoundState } from "@/components/evaluation/NotFoundState";
-import { EvaluationReport } from "@/components/report/EvaluationReport";
+import { EvaluationRunView } from "@/components/evaluation/EvaluationRunView";
 import { formatCallType } from "@/lib/utils/formatters";
+import { getEvaluationRunByPublicToken } from "@/lib/server/repositories/evaluation-runs";
+import { toPublicEvaluationResponse } from "@/lib/server/evaluation/public-response";
+
+export const dynamic = "force-dynamic";
 
 interface EvaluationPageProps {
   params: {
@@ -17,10 +19,17 @@ interface EvaluationPageProps {
 export function generateMetadata({ params }: EvaluationPageProps) {
   const evaluation = getPublicEvaluationById(params.id);
 
-  if (!evaluation) {
+  if (!evaluation && !z.string().uuid().safeParse(params.id).success) {
     return {
       title: "Evaluation Not Found - Call Quality Assurance",
       description: "The requested evaluation run could not be located.",
+    };
+  }
+
+  if (!evaluation) {
+    return {
+      title: "Call Evaluation Report - Call Quality Assurance",
+      description: "Permanent BeaverMind call evaluation report.",
     };
   }
 
@@ -31,8 +40,15 @@ export function generateMetadata({ params }: EvaluationPageProps) {
   };
 }
 
-export default function EvaluationPage({ params }: EvaluationPageProps) {
-  const evaluation = getPublicEvaluationById(params.id);
+export default async function EvaluationPage({ params }: EvaluationPageProps) {
+  const fixtureEvaluation = getPublicEvaluationById(params.id);
+  const token = z.string().uuid().safeParse(params.id);
+  const persistedRun =
+    !fixtureEvaluation && token.success
+      ? await getEvaluationRunByPublicToken(token.data)
+      : null;
+  const evaluation = fixtureEvaluation ??
+    (persistedRun ? toPublicEvaluationResponse(persistedRun) : null);
 
   if (!evaluation) {
     return (
@@ -44,10 +60,10 @@ export default function EvaluationPage({ params }: EvaluationPageProps) {
 
   return (
     <PageContainer size="lg" className="py-6 sm:py-8">
-      {evaluation.status === "queued" && <QueuedState evaluation={evaluation} />}
-      {evaluation.status === "processing" && <ProcessingState evaluation={evaluation} />}
-      {evaluation.status === "failed" && <FailedState evaluation={evaluation} />}
-      {evaluation.status === "completed" && <EvaluationReport evaluation={evaluation} />}
+      <EvaluationRunView
+        initialEvaluation={evaluation}
+        publicToken={fixtureEvaluation ? undefined : params.id}
+      />
     </PageContainer>
   );
 }

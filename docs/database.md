@@ -2,18 +2,21 @@
 
 ## Design
 
-`public.evaluation_runs` is the single persisted entity for this intentionally
-small application. A run owns its call type, transcript, lifecycle timestamps,
-optional model metadata, and eventual output. Keeping one table avoids
+`public.evaluation_runs` is the lifecycle owner and the single persisted entity
+for this intentionally small application. A run owns its opaque public token,
+call type, transcript, lifecycle timestamps, optional model metadata, structured
+failure fields, and eventual output. Keeping one table avoids
 prematurely normalizing the 12 dimensions and their evidence into tables that
 would add joins without improving this use case.
 
 `structured_result` is JSONB because `EvaluationResult` is nested and is read as
 one report. The authoritative contract remains
 `lib/contracts/evaluation.ts` (`EvaluationResultSchema`); the future server must
-validate the value with that Zod schema before writing it and after reading it.
-The `error` JSONB value follows `EvaluationErrorSchema` in the same file. No
-second TypeScript database-result interface should be introduced.
+The server repository validates it with that Zod schema before writing and after
+reading.
+Failures use `error_code`, `error_message`, and optional `error_details`; the
+repository maps them to `EvaluationErrorSchema`. No second handwritten domain
+interface is introduced.
 
 The full transcript is retained so an evaluation can be reproduced, audited,
 or retried. It is deliberately not part of the public report response contract.
@@ -28,10 +31,14 @@ queued -> processing -> completed
                      \-> failed
 ```
 
-The database constrains the allowed status and call-type values. Richer state
-consistency (for example, requiring a validated result when completing a run)
-belongs in the application layer so asynchronous transitions remain simple.
-`updated_at` is maintained by a trigger.
+The database accepts only `queued -> processing -> completed|failed`. Its
+transition trigger owns `processing_started_at` and the terminal `completed_at`;
+check constraints require a result only for completed runs and structured error
+fields only for failed runs. `updated_at` is maintained by a separate trigger.
+
+The transcript is checked using `octet_length`, so the five MiB maximum is a
+byte limit rather than a character limit. The server repository applies the same
+UTF-8 byte guard before making a database request.
 
 ## Access and RLS
 
@@ -41,19 +48,24 @@ privileges revoked. A holder of `/evaluation/{id}` will eventually access a
 safe report through this path:
 
 ```text
-Browser -> Node API -> exact UUID lookup -> safe report response
+Browser -> Node API -> exact public-token lookup -> safe report response
 ```
 
-Only the server uses `SUPABASE_SERVICE_ROLE_KEY`, which bypasses RLS. The key
+Only the server uses `SUPABASE_SECRET_KEY`, which bypasses RLS. The key
 must not be prefixed with `NEXT_PUBLIC_`, imported by a Client Component, logged,
 or committed. Browser code must never query `evaluation_runs` through the
 Supabase client directly.
 
 ## Apply and verify
 
-The migration is
-`supabase/migrations/20260823010000_create_evaluation_runs.sql`. No remote
-project is configured in this repository, so it has not been deployed.
+The base migration is followed by
+`supabase/migrations/20260824085534_harden_evaluation_runs_lifecycle.sql`.
+All migrations are deployed to the `beavermind` Supabase project, and its
+remote migration history matches the repository filenames.
+
+Phase 2 adds
+`supabase/migrations/20260824132414_add_evaluation_run_claim_function.sql`, a
+server-only atomic queue claim using `FOR UPDATE SKIP LOCKED`.
 
 For a local Supabase stack (Docker required):
 
@@ -82,5 +94,5 @@ The future server environment requires:
 
 ```text
 SUPABASE_URL
-SUPABASE_SERVICE_ROLE_KEY
+SUPABASE_SECRET_KEY
 ```

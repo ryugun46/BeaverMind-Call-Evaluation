@@ -7,6 +7,7 @@ import { CallTypeSelector } from "./CallTypeSelector";
 import { TranscriptInput } from "./TranscriptInput";
 import { ActionButton } from "@/components/ui/ActionButton";
 import { ArrowRight, ShieldCheck } from "lucide-react";
+import { CreateEvaluationResponseSchema } from "@/lib/contracts/evaluation";
 
 export function SubmissionForm() {
   const router = useRouter();
@@ -20,7 +21,7 @@ export function SubmissionForm() {
     setError(null);
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
     if (!callType) {
@@ -44,16 +45,31 @@ export function SubmissionForm() {
     setError(null);
     setIsSubmitting(true);
 
-    // Determine target permanent evaluation run ID based on selection / content
-    let targetId = "demo-completed-kickoff";
-    if (callType === "coaching") {
-      targetId = "demo-coaching-d4-disabled";
-    }
+    try {
+      const response = await fetch("/api/evaluations", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ callType, transcript: trimmed }),
+      });
+      const body: unknown = await response.json();
+      if (!response.ok) {
+        const message =
+          body && typeof body === "object" && "error" in body
+            ? String(body.error)
+            : "Could not create evaluation.";
+        throw new Error(message);
+      }
 
-    // In a real backend, this creates a record in the database and returns a UUID
-    setTimeout(() => {
-      router.push(`/evaluation/${targetId}`);
-    }, 450);
+      const created = CreateEvaluationResponseSchema.parse(body);
+      router.push(new URL(created.evaluationUrl).pathname);
+    } catch (submissionError) {
+      setError(
+        submissionError instanceof Error
+          ? submissionError.message
+          : "Could not create evaluation. Please try again."
+      );
+      setIsSubmitting(false);
+    }
   };
 
   return (

@@ -2,7 +2,7 @@ begin;
 
 create extension if not exists pgtap with schema extensions;
 
-select plan(12);
+select plan(26);
 
 insert into public.evaluation_runs (call_type, rubric_version, transcript)
 values ('kickoff', 'kickoff-v1', 'Kick-off verification transcript.');
@@ -78,6 +78,151 @@ select throws_ok(
   '23502',
   null,
   'rubric version is required'
+);
+
+select ok(
+  (select public_token is not null
+   from public.evaluation_runs
+   where transcript = 'Kick-off verification transcript.'),
+  'public token is generated'
+);
+
+select throws_ok(
+  $$insert into public.evaluation_runs (call_type, rubric_version, transcript)
+    values ('kickoff', 'kickoff-v1', repeat('a', 5242881));$$,
+  '23514',
+  null,
+  'transcripts larger than five MiB are rejected'
+);
+
+select throws_ok(
+  $$insert into public.evaluation_runs (call_type, rubric_version, transcript)
+    values ('kickoff', 'kickoff-v1', E'  \n\t  ');$$,
+  '23514',
+  null,
+  'blank transcripts are rejected'
+);
+
+update public.evaluation_runs
+set status = 'processing'
+where transcript = 'Kick-off verification transcript.';
+
+select ok(
+  (select processing_started_at is not null and completed_at is null
+   from public.evaluation_runs
+   where transcript = 'Kick-off verification transcript.'),
+  'queued to processing transition owns its start timestamp'
+);
+
+select throws_ok(
+  $$insert into public.evaluation_runs (call_type, rubric_version, transcript, status, structured_result)
+    values ('kickoff', 'kickoff-v1', 'Skipped processing.', 'completed', '{}'::jsonb);$$,
+  '23514',
+  null,
+  'runs cannot be inserted directly as completed'
+);
+
+select throws_ok(
+  $$update public.evaluation_runs
+    set status = 'completed'
+    where transcript = 'Kick-off verification transcript.';$$,
+  '23514',
+  null,
+  'completed status requires a structured result'
+);
+
+update public.evaluation_runs
+set status = 'completed', structured_result = '{}'::jsonb
+where transcript = 'Kick-off verification transcript.';
+
+select ok(
+  (select completed_at is not null and structured_result = '{}'::jsonb
+   from public.evaluation_runs
+   where transcript = 'Kick-off verification transcript.'),
+  'processing to completed stores its result and terminal timestamp'
+);
+
+select throws_ok(
+  $$update public.evaluation_runs
+    set status = 'failed', structured_result = null,
+        error_code = 'TOO_LATE', error_message = 'Terminal runs are immutable.'
+    where transcript = 'Kick-off verification transcript.';$$,
+  '23514',
+  null,
+  'terminal status cannot transition again'
+);
+
+update public.evaluation_runs
+set status = 'processing'
+where transcript = 'Coaching verification transcript.';
+
+update public.evaluation_runs
+set status = 'failed',
+    error_code = 'WORKER_ERROR',
+    error_message = 'Evaluation worker failed.',
+    error_details = '{"retryable": true}'::jsonb
+where transcript = 'Coaching verification transcript.';
+
+select ok(
+  (select completed_at is not null
+      and error_code = 'WORKER_ERROR'
+      and error_message = 'Evaluation worker failed.'
+      and error_details = '{"retryable": true}'::jsonb
+   from public.evaluation_runs
+   where transcript = 'Coaching verification transcript.'),
+  'failed status stores structured failure fields and terminal timestamp'
+);
+
+select throws_ok(
+  $$update public.evaluation_runs
+    set public_token = gen_random_uuid()
+    where transcript = 'Coaching verification transcript.';$$,
+  '23514',
+  null,
+  'public report tokens cannot change'
+);
+
+insert into public.evaluation_runs (call_type, rubric_version, transcript)
+values
+  ('kickoff', 'kickoff-v1', 'Queue claim verification one.'),
+  ('coaching', 'coaching-v2', 'Queue claim verification two.');
+
+create temporary table claimed_evaluation_run as
+select *
+from public.claim_next_evaluation_run('openrouter', 'provider/model');
+
+select is(
+  (select count(*)::integer from claimed_evaluation_run),
+  1,
+  'queue claim returns exactly one run'
+);
+
+select is(
+  (select status from claimed_evaluation_run),
+  'processing',
+  'queue claim transitions the run to processing'
+);
+
+select ok(
+  (select processing_started_at is not null
+      and model_provider = 'openrouter'
+      and model_name = 'provider/model'
+   from claimed_evaluation_run),
+  'queue claim records lifecycle and provider metadata'
+);
+
+select ok(
+  not has_function_privilege(
+    'anon',
+    'public.claim_next_evaluation_run(text,text)',
+    'execute'
+  )
+    and not has_function_privilege(
+      'authenticated',
+      'public.claim_next_evaluation_run(text,text)',
+      'execute'
+    ),
+  'browser roles cannot claim queued runs'
 );
 
 select ok(

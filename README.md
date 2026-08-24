@@ -1,4 +1,4 @@
-# Call Evaluation System — Frontend QA Core
+# Call Evaluation System — Persistent AI Evaluation MVP
 
 A high-credibility, evidence-grounded AI Call Quality Assurance evaluation platform designed for reviewing and scoring Kick-off and Coaching conversation transcripts.
 
@@ -8,7 +8,8 @@ A high-credibility, evidence-grounded AI Call Quality Assurance evaluation platf
 - **Language**: TypeScript (Strict Mode)
 - **Styling**: Tailwind CSS (Calm, light-first analytical theme)
 - **Icons**: Lucide React
-- **Architecture**: Domain-driven types with isolated fixtures
+- **Persistence**: Supabase/Postgres with server-only repository access
+- **Evaluation**: Separate OpenRouter worker with structured output validation
 
 ---
 
@@ -35,6 +36,7 @@ app/
   evaluation/
     [id]/
       page.tsx                   # Dynamic evaluation run status & report
+  api/evaluations/              # Server submission and public-token reads
 components/
   layout/
     Header.tsx                   # Minimal top brand navigation
@@ -73,14 +75,17 @@ lib/
   types/
     evaluation.ts              # Compatibility type re-exports only
   fixtures/
-    evaluation-fixtures.ts     # Zod-parsed, rubric-derived lifecycle fixtures
+    evaluation-fixtures.ts     # Development-only lifecycle fixtures
+  server/
+    repositories/              # Supabase persistence boundary
+    evaluation/                # Provider, prompt, validation, and worker flow
   utils/
     formatters.ts                # Score, date, and band formatting helpers
     cn.ts                        # Tailwind class merge helper
 ```
 
-Database migration and RLS documentation live in `supabase/` and
-`docs/database.md`.
+Database/RLS documentation lives in `docs/database.md`; the evaluation worker
+and HTTP flow are documented in `docs/processing.md`.
 
 ---
 
@@ -93,6 +98,13 @@ npm install
 # Start development server
 npm run dev
 
+# In a separate terminal, process queued evaluations
+npm run worker:evaluations
+
 # Run production build
 npm run build
 ```
+
+Production deployments on Vercel schedule evaluation processing from the
+submission route with `waitUntil`. The standalone worker command is intended
+for local development or a persistent worker host.

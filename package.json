@@ -8,16 +8,22 @@
     "start": "next start",
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
-    "test": "node --test --require tsx/cjs lib/contracts/__tests__/evaluation.test.ts lib/rubrics/__tests__/rubrics.test.ts",
+    "test": "node --conditions=react-server --test --require tsx/cjs lib/contracts/__tests__/evaluation.test.ts lib/rubrics/__tests__/rubrics.test.ts lib/server/__tests__/env.test.ts lib/server/__tests__/evaluation-runs.test.ts lib/server/__tests__/evaluation-processing.test.ts",
     "test:contracts": "node --test --require tsx/cjs lib/contracts/__tests__/evaluation.test.ts",
-    "test:rubrics": "node --test --require tsx/cjs lib/rubrics/__tests__/rubrics.test.ts"
+    "test:rubrics": "node --test --require tsx/cjs lib/rubrics/__tests__/rubrics.test.ts",
+    "test:server": "node --conditions=react-server --test --require tsx/cjs lib/server/__tests__/env.test.ts lib/server/__tests__/evaluation-runs.test.ts lib/server/__tests__/evaluation-processing.test.ts",
+    "worker:evaluations": "node --conditions=react-server --require tsx/cjs scripts/evaluation-worker.ts"
   },
   "dependencies": {
+    "@next/env": "14.2.35",
+    "@supabase/supabase-js": "2.112.3",
+    "@vercel/functions": "3.9.5",
     "clsx": "^2.1.1",
     "lucide-react": "^0.468.0",
     "next": "^14.2.18",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
+    "server-only": "0.0.1",
     "tailwind-merge": "^2.5.5",
     "zod": "^4.4.3"
   },

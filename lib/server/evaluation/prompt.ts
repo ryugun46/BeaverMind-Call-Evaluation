@@ -33,7 +33,7 @@ export function buildEvaluationMessages(
         "TRANSCRIPT START",
         run.transcript,
         "TRANSCRIPT END",
-        "Produce all 12 dimensions in numeric order. Reconcile rawScore, maxPossible, normalizedScore, finalScore, and performanceBand exactly.",
+        "Produce all 12 dimensions in numeric order. scoreSummary is derived from the dimension scores and applied rules by the server; provide your best calculation, but do not alter dimension scores merely to reconcile summary arithmetic.",
       ].join("\n\n"),
     },
   ];

@@ -307,7 +307,16 @@ export type ScoreSummary = z.infer<typeof ScoreSummarySchema>;
  * Totals are NOT calculated inside this schema — they are computed upstream
  * and stored in `scoreSummary`.
  */
-export const EvaluationResultSchema = z.object({
+/**
+ * Structural result schema used while validating provider output.
+ *
+ * Cross-field score reconciliation is intentionally added only by
+ * `EvaluationResultSchema` below. The evaluation worker parses against this
+ * structural schema first so it can deterministically calculate scoreSummary
+ * from the dimension scores and applied rules instead of trusting model
+ * arithmetic.
+ */
+export const EvaluationResultCandidateSchema = z.object({
   scoreSummary: ScoreSummarySchema,
   /** Coach-facing narrative summary of the call */
   brief: z.string().min(1),
@@ -321,7 +330,9 @@ export const EvaluationResultSchema = z.object({
   dimensions: z
     .array(DimensionResultSchema)
     .length(12, "EvaluationResult must contain exactly 12 dimension entries"),
-}).superRefine((result, ctx) => {
+});
+
+export const EvaluationResultSchema = EvaluationResultCandidateSchema.superRefine((result, ctx) => {
   const expectedNumbers = Array.from({ length: 12 }, (_, index) => index + 1);
   const actualNumbers = result.dimensions.map((dimension) => dimension.dimensionNumber);
   if (actualNumbers.some((number, index) => number !== expectedNumbers[index])) {

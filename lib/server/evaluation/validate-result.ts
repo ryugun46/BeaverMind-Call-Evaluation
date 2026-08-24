@@ -3,6 +3,7 @@ import "server-only";
 import { z } from "zod";
 
 import {
+  EvaluationResultCandidateSchema,
   EvaluationResultSchema,
   type EvaluationResult,
   type EvaluationRun,
@@ -42,7 +43,7 @@ export function validateEvaluationResult(
   value: unknown,
   run: Pick<EvaluationRun, "callType" | "transcript" | "rubricVersion">
 ): EvaluationResult {
-  const contractResult = EvaluationResultSchema.safeParse(value);
+  const contractResult = EvaluationResultCandidateSchema.safeParse(value);
   if (!contractResult.success) {
     throw new EvaluationOutputValidationError(
       contractResult.error.issues.map(
@@ -77,6 +78,7 @@ export function validateEvaluationResult(
   });
 
   let activeMaximum = 0;
+  let rawScore = 0;
   result.dimensions.forEach((dimension, index) => {
     const definition = rubric.dimensions[index];
     if (!definition) return;
@@ -99,6 +101,7 @@ export function validateEvaluationResult(
       activeMaximum += definition.maxScore;
       const score = dimension.score;
       if (score !== null) {
+        rawScore += score;
         const scoreBand = findScoreBand(definition, score);
         if (!scoreBand) {
           issues.push(`dimensions.${index}.score is not an authored rubric score`);
@@ -124,16 +127,9 @@ export function validateEvaluationResult(
     });
   });
 
-  if (result.scoreSummary.maxPossible !== activeMaximum) {
-    issues.push("scoreSummary.maxPossible must equal active rubric weight");
-  }
-
   const expectedNormalized = Number(
-    ((result.scoreSummary.rawScore / activeMaximum) * 100).toFixed(2)
+    ((rawScore / activeMaximum) * 100).toFixed(2)
   );
-  if (Math.abs(result.scoreSummary.normalizedScore - expectedNormalized) > 0.01) {
-    issues.push("scoreSummary.normalizedScore is inconsistent with rawScore/maxPossible");
-  }
 
   let expectedFinal = expectedNormalized;
   appliedRuleIds.forEach((ruleId) => {
@@ -155,16 +151,16 @@ export function validateEvaluationResult(
     }
   });
 
-  if (Math.abs(result.scoreSummary.finalScore - expectedFinal) > 0.01) {
-    issues.push("scoreSummary.finalScore is inconsistent with applied total caps");
-  }
-  if (
-    result.scoreSummary.performanceBand !==
-    getPerformanceBandForScore(result.scoreSummary.finalScore)
-  ) {
-    issues.push("scoreSummary.performanceBand does not match finalScore");
-  }
-
   if (issues.length > 0) throw new EvaluationOutputValidationError(issues);
-  return result;
+
+  return EvaluationResultSchema.parse({
+    ...result,
+    scoreSummary: {
+      rawScore,
+      maxPossible: activeMaximum,
+      normalizedScore: expectedNormalized,
+      finalScore: expectedFinal,
+      performanceBand: getPerformanceBandForScore(expectedFinal),
+    },
+  });
 }

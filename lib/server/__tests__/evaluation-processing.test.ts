@@ -53,6 +53,21 @@ test("Phase 2 validation accepts a contract-valid, rubric-grounded fixture", () 
   );
 });
 
+test("Phase 2 deterministically repairs model score-summary arithmetic", () => {
+  const candidate = structuredClone(completedResult);
+  candidate.scoreSummary = {
+    rawScore: 1,
+    maxPossible: 1,
+    normalizedScore: 1,
+    finalScore: 1,
+    performanceBand: "FAIL",
+  };
+
+  const validated = validateEvaluationResult(candidate, completedFixture);
+
+  assert.deepEqual(validated.scoreSummary, completedResult.scoreSummary);
+});
+
 test("Phase 2 validation rejects evidence not found verbatim in the transcript", () => {
   const candidate = structuredClone(completedResult);
   candidate.dimensions[0]!.evidence[0]!.quote = "This quote was fabricated.";

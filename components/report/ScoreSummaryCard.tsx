@@ -17,6 +17,8 @@ export function ScoreSummaryCard({ evaluation }: ScoreSummaryCardProps) {
     result.scoreSummary;
   const { metadata } = evaluation;
   const { dimensions } = result;
+  const coachName = result.coachName ?? metadata?.repName;
+  const clientName = result.clientName ?? metadata?.clientName;
 
   const isNormalized = maxPossible !== 100;
   const rawMax = maxPossible;
@@ -87,22 +89,22 @@ export function ScoreSummaryCard({ evaluation }: ScoreSummaryCardProps) {
           </span>
 
           <div className="space-y-2.5 text-xs">
-            {metadata?.repName && (
+            {coachName && (
               <div className="flex items-center gap-2 text-zinc-700">
                 <User className="w-3.5 h-3.5 text-zinc-400 shrink-0" />
                 <span className="text-zinc-400 font-mono text-[11px]">Coach / Rep:</span>
                 <strong className="text-zinc-900 font-medium ml-auto truncate max-w-[160px]">
-                  {metadata.repName}
+                  {coachName}
                 </strong>
               </div>
             )}
 
-            {metadata?.clientName && (
+            {clientName && (
               <div className="flex items-center gap-2 text-zinc-700">
                 <Building2 className="w-3.5 h-3.5 text-zinc-400 shrink-0" />
                 <span className="text-zinc-400 font-mono text-[11px]">Client:</span>
                 <strong className="text-zinc-900 font-medium ml-auto truncate max-w-[160px]">
-                  {metadata.clientName}
+                  {clientName}
                 </strong>
               </div>
             )}

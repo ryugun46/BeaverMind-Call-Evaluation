@@ -17,6 +17,7 @@ const TrackedEvaluationSchema = z.object({
   id: z.string().uuid(),
   publicToken: z.string().uuid(),
   evaluationPath: z.string().regex(/^\/evaluation\/[0-9a-f-]{36}$/i),
+  reportName: z.string().trim().min(1).max(120).optional(),
   callType: CallTypeSchema,
   status: EvaluationStatusSchema,
   createdAt: z.string().datetime({ offset: true }),
@@ -56,6 +57,7 @@ export function readTrackedEvaluations(): TrackedEvaluation[] {
 export function trackEvaluation(input: {
   id: string;
   evaluationUrl: string;
+  reportName: string;
   callType: CallType;
 }) {
   if (typeof window === "undefined") return;
@@ -66,6 +68,7 @@ export function trackEvaluation(input: {
     id: input.id,
     publicToken,
     evaluationPath,
+    reportName: input.reportName,
     callType: input.callType,
     status: "queued",
     createdAt: new Date().toISOString(),

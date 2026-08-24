@@ -19,6 +19,12 @@ import { z } from "zod";
 
 import { EvaluationModelSlugSchema } from "@/lib/evaluation-models";
 
+export const EvaluationContextLabelSchema = z
+  .string()
+  .trim()
+  .min(1, "This field must not be empty")
+  .max(120, "This field must be 120 characters or fewer");
+
 // ─────────────────────────────────────────────────────────────────────────────
 // § 1. Core Enums
 // ─────────────────────────────────────────────────────────────────────────────
@@ -317,6 +323,9 @@ export type ScoreSummary = z.infer<typeof ScoreSummarySchema>;
  * arithmetic.
  */
 export const EvaluationResultCandidateSchema = z.object({
+  /** Names inferred from speaker labels and dialogue for report context. */
+  clientName: EvaluationContextLabelSchema.optional(),
+  coachName: EvaluationContextLabelSchema.optional(),
   scoreSummary: ScoreSummarySchema,
   /** Coach-facing narrative summary of the call */
   brief: z.string().min(1),
@@ -330,6 +339,12 @@ export const EvaluationResultCandidateSchema = z.object({
   dimensions: z
     .array(DimensionResultSchema)
     .length(12, "EvaluationResult must contain exactly 12 dimension entries"),
+});
+
+/** Strict provider output for new evaluations; stored legacy results may omit names. */
+export const EvaluationProviderResultSchema = EvaluationResultCandidateSchema.extend({
+  clientName: EvaluationContextLabelSchema,
+  coachName: EvaluationContextLabelSchema,
 });
 
 export const EvaluationResultSchema = EvaluationResultCandidateSchema.superRefine((result, ctx) => {
@@ -386,8 +401,8 @@ export type EvaluationError = z.infer<typeof EvaluationErrorSchema>;
  * Not part of the scored rubric — used for display and filtering.
  */
 export const EvaluationMetadataSchema = z.object({
-  repName: z.string().optional(),
-  clientName: z.string().optional(),
+  repName: EvaluationContextLabelSchema.optional(),
+  clientName: EvaluationContextLabelSchema.optional(),
   /** Human-readable duration string, e.g. "28m 14s" */
   callDuration: z.string().optional(),
   wordCount: z.number().int().nonnegative().optional(),
@@ -416,6 +431,7 @@ export type EvaluationMetadata = z.infer<typeof EvaluationMetadataSchema>;
  */
 const EvaluationRunShape = {
   id: z.string().uuid(),
+  reportName: EvaluationContextLabelSchema.optional(),
   callType: CallTypeSchema,
   rubricVersion: z.string().min(1),
   status: EvaluationStatusSchema,
@@ -490,6 +506,7 @@ export type EvaluationRun = z.infer<typeof EvaluationRunSchema>;
  *     The worker layer may impose its own byte-size guardrail.
  */
 export const CreateEvaluationInputSchema = z.object({
+  reportName: EvaluationContextLabelSchema,
   callType: CallTypeSchema,
   modelSlug: EvaluationModelSlugSchema,
   transcript: z
@@ -522,6 +539,7 @@ export type CreateEvaluationResponse = z.infer<typeof CreateEvaluationResponseSc
  */
 export const EvaluationPublicResponseSchema = z.object({
   id: z.string().uuid(),
+  reportName: EvaluationContextLabelSchema.optional(),
   callType: CallTypeSchema,
   rubricVersion: z.string().min(1),
   status: EvaluationStatusSchema,

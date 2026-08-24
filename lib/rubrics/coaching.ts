@@ -271,6 +271,11 @@ export const COACHING_RUBRIC = RubricDefinitionSchema.parse({
       label: "Coach Monologue",
       condition: "Coach speaks more than 75% of the call and the client is passive.",
       effect: { kind: "total_cap", maxTotal: 75 },
+      deterministicGuard: {
+        kind: "speaker_word_share_above",
+        speakerLabelIncludes: "coach",
+        thresholdPercent: 75,
+      },
     },
     {
       id: "COACHING_NO_ACCOUNTABILITY_COMMITMENT_D6_CAP",

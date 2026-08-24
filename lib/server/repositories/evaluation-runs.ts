@@ -55,6 +55,7 @@ export type CreatedEvaluationRun = z.infer<typeof CreatedEvaluationRunSchema>;
 const RUN_COLUMNS = [
   "id",
   "public_token",
+  "report_name",
   "call_type",
   "transcript",
   "status",
@@ -74,6 +75,7 @@ const RUN_COLUMNS = [
 const HISTORY_COLUMNS = [
   "id",
   "public_token",
+  "report_name",
   "call_type",
   "status",
   "rubric_version",
@@ -91,6 +93,7 @@ const HistoryLimitSchema = z.number().int().min(1).max(200);
 const EvaluationHistorySummarySchema = z
   .object({
     id: UUIDSchema,
+    reportName: z.string().trim().min(1).max(120).optional(),
     callType: CallTypeSchema,
     rubricVersion: z.string().min(1),
     status: z.enum(["completed", "failed"]),
@@ -119,6 +122,7 @@ const EvaluationHistorySummarySchema = z
 
 export interface EvaluationHistorySummary {
   id: string;
+  reportName?: string;
   callType: z.infer<typeof CallTypeSchema>;
   rubricVersion: string;
   status: "completed" | "failed";
@@ -179,6 +183,7 @@ function mapEvaluationRun(value: unknown): PersistedEvaluationRun {
 
   return PersistedEvaluationRunSchema.parse({
     id: row.id,
+    ...(row.report_name ? { reportName: row.report_name } : {}),
     callType: row.call_type,
     rubricVersion: row.rubric_version,
     modelProvider: row.model_provider,
@@ -211,6 +216,7 @@ function mapEvaluationHistoryItem(value: unknown): EvaluationHistoryItem {
     publicToken: UUIDSchema.parse(row.public_token),
     evaluation: EvaluationHistorySummarySchema.parse({
       id: row.id,
+      ...(row.report_name ? { reportName: row.report_name } : {}),
       callType: row.call_type,
       rubricVersion: row.rubric_version,
       status: row.status,
@@ -240,6 +246,7 @@ export function createEvaluationRunsRepository(client: SupabaseClient) {
       const { data, error } = await client
         .from("evaluation_runs")
         .insert({
+          report_name: parsed.reportName,
           call_type: parsed.callType,
           transcript: parsed.transcript,
           rubric_version: rubricVersion,

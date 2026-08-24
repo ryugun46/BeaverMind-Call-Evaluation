@@ -2,7 +2,7 @@ import "server-only";
 
 import { z } from "zod";
 
-import { EvaluationResultSchema, type EvaluationRun } from "@/lib/contracts/evaluation";
+import { EvaluationProviderResultSchema, type EvaluationRun } from "@/lib/contracts/evaluation";
 import { OpenRouterModelSlugSchema } from "@/lib/evaluation-models";
 import {
   getOpenRouterEnvironment,
@@ -11,7 +11,7 @@ import {
 import { buildEvaluationMessages } from "@/lib/server/evaluation/prompt";
 
 const OPENROUTER_CHAT_URL = "https://openrouter.ai/api/v1/chat/completions";
-const DOMAIN_RESULT_JSON_SCHEMA = z.toJSONSchema(EvaluationResultSchema, {
+const DOMAIN_RESULT_JSON_SCHEMA = z.toJSONSchema(EvaluationProviderResultSchema, {
   target: "draft-7",
 });
 
@@ -87,6 +87,14 @@ export function normalizeProviderResult(
 }
 
 const RESULT_JSON_SCHEMA = toStrictProviderSchema(DOMAIN_RESULT_JSON_SCHEMA);
+
+function deterministicSamplingParameters(model: string) {
+  if (model.startsWith("anthropic/")) return { temperature: 0 };
+  if (model.startsWith("openai/") || model.startsWith("google/")) {
+    return { seed: 4262026 };
+  }
+  return {};
+}
 
 const OpenRouterResponseSchema = z.object({
   model: z.string().optional(),
@@ -223,6 +231,7 @@ export function createOpenRouterProvider(
             model,
             messages,
             max_tokens: environment.OPENROUTER_MAX_TOKENS,
+            ...deterministicSamplingParameters(model),
             stream: false,
             provider: { require_parameters: true },
             response_format: {

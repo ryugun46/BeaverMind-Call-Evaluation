@@ -223,6 +223,11 @@ export const KICKOFF_RUBRIC = RubricDefinitionSchema.parse({
       label: "Coach Monologue",
       condition: "Coach speaks more than 70% of the time without client engagement.",
       effect: { kind: "total_cap", maxTotal: 80 },
+      deterministicGuard: {
+        kind: "speaker_word_share_above",
+        speakerLabelIncludes: "coach",
+        thresholdPercent: 70,
+      },
     },
     {
       id: "KICKOFF_UNRESOLVED_CONFUSION_TOTAL_CAP",
@@ -253,4 +258,3 @@ export const KICKOFF_RUBRIC = RubricDefinitionSchema.parse({
   ],
   unresolvedRules: [],
 });
-

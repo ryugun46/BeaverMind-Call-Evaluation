@@ -57,5 +57,11 @@ export function EvaluationRunView({
     return <ProcessingState evaluation={evaluation} />;
   }
   if (evaluation.status === "failed") return <FailedState evaluation={evaluation} />;
-  return <EvaluationReport evaluation={evaluation} />;
+  const pdfKey = publicToken ?? evaluation.id;
+  return (
+    <EvaluationReport
+      evaluation={evaluation}
+      pdfUrl={`/api/evaluations/${encodeURIComponent(pdfKey)}/pdf`}
+    />
+  );
 }

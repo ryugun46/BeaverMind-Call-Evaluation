@@ -41,6 +41,8 @@ describe("fixture contract integration", () => {
       const result = FIXTURE_EVALUATIONS[key].result;
       assert.ok(result, `${key} must contain its authoritative result`);
       assert.equal(EvaluationResultSchema.safeParse(result).success, true);
+      assert.ok(result.clientName, `${key} must identify the client`);
+      assert.ok(result.coachName, `${key} must identify the coach`);
     }
     assert.equal(
       FIXTURE_EVALUATIONS["coaching-d4-disabled"].result?.dimensions[3].score,
@@ -161,6 +163,7 @@ describe("API input and enums", () => {
   it("rejects empty transcripts and accepts approximately 65 KB", () => {
     assert.equal(
       CreateEvaluationInputSchema.safeParse({
+        reportName: "David's August Kick-off",
         callType: "kickoff",
         modelSlug: "openai/gpt-4.1-mini",
         transcript: "   ",
@@ -169,6 +172,7 @@ describe("API input and enums", () => {
     );
     assert.equal(
       CreateEvaluationInputSchema.safeParse({
+        reportName: "Jordan's Coaching Review",
         callType: "coaching",
         modelSlug: "anthropic/claude-sonnet-4.6",
         transcript: "x".repeat(65 * 1024),
@@ -180,6 +184,7 @@ describe("API input and enums", () => {
   it("accepts selectable OpenRouter models and rejects arbitrary model slugs", () => {
     assert.equal(
       CreateEvaluationInputSchema.safeParse({
+        reportName: "David's Kick-off",
         callType: "kickoff",
         modelSlug: "google/gemini-2.5-pro",
         transcript: "A sufficiently detailed coaching transcript.",
@@ -188,10 +193,26 @@ describe("API input and enums", () => {
     );
     assert.equal(
       CreateEvaluationInputSchema.safeParse({
+        reportName: "David's Kick-off",
         callType: "kickoff",
         modelSlug: "openai/unreviewed-expensive-model",
         transcript: "A sufficiently detailed coaching transcript.",
       }).success,
+      false
+    );
+  });
+
+  it("requires only a report name for report context input", () => {
+    const validInput = {
+      reportName: "David's Kick-off",
+      callType: "kickoff",
+      modelSlug: "openai/gpt-4.1-mini",
+      transcript: "A sufficiently detailed coaching transcript.",
+    } as const;
+
+    assert.equal(CreateEvaluationInputSchema.safeParse(validInput).success, true);
+    assert.equal(
+      CreateEvaluationInputSchema.safeParse({ ...validInput, reportName: " " }).success,
       false
     );
   });

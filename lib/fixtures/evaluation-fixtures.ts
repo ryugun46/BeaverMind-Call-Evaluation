@@ -203,6 +203,8 @@ function makeDimensions(
 }
 
 function makeResult(input: {
+  clientName: string;
+  coachName: string;
   rawScore: number;
   maxPossible: number;
   normalizedScore: number;
@@ -215,6 +217,8 @@ function makeResult(input: {
   dimensions: DimensionResult[];
 }) {
   return EvaluationResultSchema.parse({
+    clientName: input.clientName,
+    coachName: input.coachName,
     scoreSummary: {
       rawScore: input.rawScore,
       maxPossible: input.maxPossible,
@@ -276,6 +280,8 @@ const coachingStrategyQuotes = [
 ] as const;
 
 const kickoffEliteResult = makeResult({
+  clientName: "David Miller",
+  coachName: "Sarah Chen",
   rawScore: 92,
   maxPossible: 100,
   normalizedScore: 92,
@@ -299,6 +305,8 @@ const kickoffEliteResult = makeResult({
 });
 
 const kickoffAtRiskResult = makeResult({
+  clientName: "Rachel Lee",
+  coachName: "Alex Morgan",
   rawScore: 61.5,
   maxPossible: 100,
   normalizedScore: 61.5,
@@ -342,6 +350,8 @@ const kickoffAtRiskResult = makeResult({
 });
 
 const coachingFullResult = makeResult({
+  clientName: "Jordan Hayes",
+  coachName: "Marcus Vance",
   rawScore: 87,
   maxPossible: 100,
   normalizedScore: 87,
@@ -368,6 +378,8 @@ const d4DisabledReason =
   "No live or recorded movement coaching occurred; the session focused entirely on strategy and accountability.";
 
 const coachingDisabledResult = makeResult({
+  clientName: "Jordan Hayes",
+  coachName: "Marcus Vance",
   rawScore: 67.5,
   maxPossible: 85,
   normalizedScore: 79.4,
@@ -409,6 +421,7 @@ function parseRun(run: EvaluationRun): EvaluationRun {
 export const FIXTURE_EVALUATIONS: Record<string, EvaluationRun> = {
   "kickoff-elite": parseRun({
     id: "9842c6a0-2c3f-4a13-8b91-000000000001",
+    reportName: "David's Kick-off Review",
     callType: "kickoff",
     rubricVersion: "kickoff-v1",
     status: "completed",
@@ -423,6 +436,7 @@ export const FIXTURE_EVALUATIONS: Record<string, EvaluationRun> = {
   }),
   "kickoff-at-risk": parseRun({
     id: "61a2f351-57db-4f90-8f60-000000000002",
+    reportName: "Rachel's Kick-off Review",
     callType: "kickoff",
     rubricVersion: "kickoff-v1",
     status: "completed",
@@ -437,6 +451,7 @@ export const FIXTURE_EVALUATIONS: Record<string, EvaluationRun> = {
   }),
   "completed-coaching-full": parseRun({
     id: "8821ee9f-e8d7-47cf-9a61-000000000003",
+    reportName: "Jordan's Coaching Review",
     callType: "coaching",
     rubricVersion: "coaching-v2",
     status: "completed",
@@ -451,6 +466,7 @@ export const FIXTURE_EVALUATIONS: Record<string, EvaluationRun> = {
   }),
   "coaching-d4-disabled": parseRun({
     id: "4491ab12-45f4-4d81-a8be-000000000004",
+    reportName: "Jordan's Strategy Session",
     callType: "coaching",
     rubricVersion: "coaching-v2",
     status: "completed",
@@ -465,6 +481,7 @@ export const FIXTURE_EVALUATIONS: Record<string, EvaluationRun> = {
   }),
   "processing-coaching": parseRun({
     id: "7712d548-e501-4619-9b45-000000000005",
+    reportName: "Jordan's Coaching Review",
     callType: "coaching",
     rubricVersion: "coaching-v2",
     status: "processing",
@@ -479,6 +496,7 @@ export const FIXTURE_EVALUATIONS: Record<string, EvaluationRun> = {
   }),
   "queued-kickoff": parseRun({
     id: "3301f8a1-e892-4f1e-886e-000000000006",
+    reportName: "David's Kick-off Review",
     callType: "kickoff",
     rubricVersion: "kickoff-v1",
     status: "queued",
@@ -493,6 +511,7 @@ export const FIXTURE_EVALUATIONS: Record<string, EvaluationRun> = {
   }),
   "failed-kickoff": parseRun({
     id: "9011ce3c-e2df-4bb8-a170-000000000007",
+    reportName: "Unlabelled Kick-off Review",
     callType: "kickoff",
     rubricVersion: "kickoff-v1",
     status: "failed",

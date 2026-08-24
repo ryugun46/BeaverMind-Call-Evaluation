@@ -190,11 +190,22 @@ export const RuleEffectSchema = z.discriminatedUnion("kind", [
 ]);
 export type RuleEffect = z.infer<typeof RuleEffectSchema>;
 
+export const AutomaticRuleGuardSchema = z.discriminatedUnion("kind", [
+  z.object({
+    kind: z.literal("speaker_word_share_above"),
+    speakerLabelIncludes: z.string().min(1),
+    thresholdPercent: z.number().min(0).max(100),
+  }),
+]);
+export type AutomaticRuleGuard = z.infer<typeof AutomaticRuleGuardSchema>;
+
 export const AutomaticRuleDefinitionSchema = z.object({
   id: z.string().min(1),
   label: z.string().min(1),
   condition: z.string().min(1),
   effect: RuleEffectSchema,
+  /** Optional model-independent precondition calculated from labelled turns. */
+  deterministicGuard: AutomaticRuleGuardSchema.optional(),
   nonRecoverable: z.boolean().default(false),
   notes: z.array(z.string().min(1)).optional(),
 });

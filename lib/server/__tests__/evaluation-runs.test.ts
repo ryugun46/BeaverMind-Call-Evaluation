@@ -22,6 +22,7 @@ const TIMESTAMP = "2026-08-24T08:00:00.000Z";
 const queuedRow = {
   id: RUN_ID,
   public_token: PUBLIC_TOKEN,
+  report_name: "David's August Kick-off",
   call_type: "kickoff",
   transcript: "A persisted transcript.",
   status: "queued",
@@ -146,6 +147,7 @@ test("repository creates a queued run with the authoritative rubric version", as
   const { fake, repository } = repositoryWith([{ data: queuedRow, error: null }]);
 
   const created = await repository.create({
+    reportName: "  David's August Kick-off  ",
     callType: "kickoff",
     modelSlug: "anthropic/claude-sonnet-4.6",
     transcript: "  A persisted transcript.  ",
@@ -154,10 +156,12 @@ test("repository creates a queued run with the authoritative rubric version", as
   assert.equal(created.publicToken, PUBLIC_TOKEN);
   assert.equal(created.run.id, RUN_ID);
   assert.equal(created.run.status, "queued");
+  assert.equal(created.run.reportName, "David's August Kick-off");
   assert.deepEqual(fake.requests[0], {
     table: "evaluation_runs",
     action: "insert",
     values: {
+      report_name: "David's August Kick-off",
       call_type: "kickoff",
       transcript: "A persisted transcript.",
       rubric_version: "kickoff-v1",
@@ -210,6 +214,7 @@ test("repository lists finalized runs newest first without loading transcripts",
 
   assert.equal(history.length, 2);
   assert.equal(history[0]?.publicToken, PUBLIC_TOKEN);
+  assert.equal(history[0]?.evaluation.reportName, "David's August Kick-off");
   assert.equal(history[0]?.evaluation.status, "completed");
   assert.equal(history[1]?.evaluation.status, "failed");
   assert.deepEqual(fake.requests[0], {
@@ -232,6 +237,7 @@ test("repository rejects an oversized UTF-8 transcript before querying", async (
 
   await assert.rejects(
     repository.create({
+      reportName: "Jordan's Coaching Review",
       callType: "coaching",
       modelSlug: "google/gemini-3.7-flash",
       transcript,

@@ -25,6 +25,10 @@ import {
   EvaluationOutputValidationError,
   validateEvaluationResult,
 } from "@/lib/server/evaluation/validate-result";
+import {
+  analyzeTranscript,
+  getSpeakerWordShareByLabel,
+} from "@/lib/server/evaluation/transcript-metrics";
 import type { EvaluationLifecycleUpdate } from "@/lib/server/repositories/evaluation-runs";
 import { PersistedEvaluationRunSchema } from "@/lib/server/repositories/evaluation-runs";
 
@@ -47,9 +51,26 @@ const processingRun = PersistedEvaluationRunSchema.parse({
 });
 
 test("Phase 2 validation accepts a contract-valid, rubric-grounded fixture", () => {
-  assert.deepEqual(
-    validateEvaluationResult(completedResult, completedFixture),
-    completedResult
+  const validated = validateEvaluationResult(completedResult, completedFixture);
+
+  assert.equal(validated.dimensions[11]!.score, 3.5);
+  assert.equal(validated.scoreSummary.rawScore, 89.5);
+  assert.equal(validated.scoreSummary.finalScore, 89.5);
+});
+
+test("Phase 2 requires AI-identified client and coach names", () => {
+  const candidate = structuredClone(completedResult);
+  delete candidate.clientName;
+  delete candidate.coachName;
+
+  assert.throws(
+    () => validateEvaluationResult(candidate, completedFixture),
+    (error: unknown) => {
+      assert.ok(error instanceof EvaluationOutputValidationError);
+      assert.ok(error.issues.some((issue) => issue.includes("clientName")));
+      assert.ok(error.issues.some((issue) => issue.includes("coachName")));
+      return true;
+    }
   );
 });
 
@@ -65,7 +86,10 @@ test("Phase 2 deterministically repairs model score-summary arithmetic", () => {
 
   const validated = validateEvaluationResult(candidate, completedFixture);
 
-  assert.deepEqual(validated.scoreSummary, completedResult.scoreSummary);
+  assert.deepEqual(
+    validated.scoreSummary,
+    validateEvaluationResult(completedResult, completedFixture).scoreSummary
+  );
 });
 
 test("Phase 2 validation rejects evidence not found verbatim in the transcript", () => {
@@ -110,8 +134,44 @@ test("Phase 2 applies recorded dimension rules and recalculates totals", () => {
   assert.equal(validated.dimensions[3]!.band, "STRONG");
   assert.equal(
     validated.scoreSummary.rawScore,
-    completedResult.scoreSummary.rawScore - 5
+    validateEvaluationResult(completedResult, completedFixture).scoreSummary.rawScore - 5
   );
+});
+
+test("Phase 2 rejects a model-only talk-ratio rule when speaker counts disprove it", () => {
+  const candidate = structuredClone(completedResult);
+  candidate.appliedRules.push({
+    ruleId: "KICKOFF_COACH_TALK_RATIO_TOTAL_CAP",
+    label: "Coach Monologue",
+    description: "The coach allegedly spoke more than seventy percent.",
+    scope: "total",
+    effect: "Cap total at 80",
+  });
+  const run = {
+    ...completedFixture,
+    transcript: `${completedFixture.transcript}\nClient: ${"client response ".repeat(500)}`,
+  };
+
+  const validated = validateEvaluationResult(candidate, run);
+
+  assert.equal(
+    validated.appliedRules.some(
+      (rule) => rule.ruleId === "KICKOFF_COACH_TALK_RATIO_TOTAL_CAP"
+    ),
+    false
+  );
+  assert.equal(validated.scoreSummary.finalScore, 89.5);
+});
+
+test("transcript metrics provide deterministic labelled-speaker shares", () => {
+  const metrics = analyzeTranscript(
+    "Coach (Sam): One two three?\nClient: Four five\nCoach (Sam): Six"
+  );
+
+  assert.equal(metrics.parsedTurnCount, 3);
+  assert.equal(metrics.parsedWordCount, 6);
+  assert.equal(getSpeakerWordShareByLabel(metrics, "coach"), 66.67);
+  assert.equal(metrics.speakers[0]?.questionMarkCount, 1);
 });
 
 test("OpenRouter provider requests strict structured output and parses JSON", async () => {
@@ -120,12 +180,12 @@ test("OpenRouter provider requests strict structured output and parses JSON", as
   const environment = getOpenRouterEnvironment({
     OPENROUTER_API_KEY: "openrouter-secret",
   });
-  const provider = createOpenRouterProvider("provider/model", environment, async (_input, init) => {
+  const provider = createOpenRouterProvider("anthropic/claude-sonnet-4.6", environment, async (_input, init) => {
     capturedAuthorization = new Headers(init?.headers).get("Authorization") ?? "";
     capturedBody = JSON.parse(String(init?.body)) as Record<string, unknown>;
     return new Response(
       JSON.stringify({
-        model: "provider/model",
+        model: "anthropic/claude-sonnet-4.6",
         choices: [
           { message: { content: JSON.stringify(completedResult) } },
         ],
@@ -143,6 +203,11 @@ test("OpenRouter provider requests strict structured output and parses JSON", as
     "json_schema"
   );
   assert.deepEqual(capturedBody?.provider, { require_parameters: true });
+  assert.equal(capturedBody?.temperature, 0);
+  assert.match(
+    JSON.stringify(capturedBody?.messages),
+    /DETERMINISTIC TRANSCRIPT METRICS/
+  );
 
   const responseSchema = (
     capturedBody?.response_format as {
@@ -150,6 +215,11 @@ test("OpenRouter provider requests strict structured output and parses JSON", as
     }
   )?.json_schema?.schema;
   assert.ok(responseSchema);
+  assert.ok(
+    Array.isArray(responseSchema.required) &&
+      responseSchema.required.includes("clientName") &&
+      responseSchema.required.includes("coachName")
+  );
 
   const incompleteObjects: string[] = [];
   const unsupportedAnnotations: string[] = [];
@@ -177,6 +247,29 @@ test("OpenRouter provider requests strict structured output and parses JSON", as
   inspect(responseSchema);
   assert.deepEqual(incompleteObjects, []);
   assert.deepEqual(unsupportedAnnotations, []);
+});
+
+test("GPT-5.6 requests use a supported repeatability seed", async () => {
+  let capturedBody: Record<string, unknown> | undefined;
+  const provider = createOpenRouterProvider(
+    "openai/gpt-5.6-sol",
+    getOpenRouterEnvironment({ OPENROUTER_API_KEY: "openrouter-secret" }),
+    async (_input, init) => {
+      capturedBody = JSON.parse(String(init?.body)) as Record<string, unknown>;
+      return new Response(
+        JSON.stringify({
+          model: "openai/gpt-5.6-sol",
+          choices: [{ message: { content: JSON.stringify(completedResult) } }],
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } }
+      );
+    }
+  );
+
+  await provider.evaluate(processingRun);
+
+  assert.equal(capturedBody?.seed, 4262026);
+  assert.equal("temperature" in (capturedBody ?? {}), false);
 });
 
 test("provider schema normalizes nullable domain-optional fields back to omission", () => {

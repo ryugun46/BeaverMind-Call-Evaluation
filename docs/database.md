@@ -5,7 +5,7 @@
 `public.evaluation_runs` is the lifecycle owner and the single persisted entity
 for this intentionally small application. A run owns its opaque public token,
 call type, transcript, lifecycle timestamps, selected model metadata, structured
-failure fields, and eventual output. Keeping one table avoids
+failure fields, user-defined report name, and eventual output. Keeping one table avoids
 prematurely normalizing the 12 dimensions and their evidence into tables that
 would add joins without improving this use case.
 
@@ -74,6 +74,13 @@ server-only atomic queue claim using `FOR UPDATE SKIP LOCKED`, and
 makes model metadata required and changes the claim to preserve the per-run
 selection.
 
+`supabase/migrations/20260824230556_add_evaluation_report_context.sql` adds
+optional report-context columns for compatibility with older rows. The follow-up
+`supabase/migrations/20260824231536_move_party_names_into_evaluation_result.sql`
+keeps `report_name` and removes the redundant client/coach columns. New
+submissions require only a report name. Client and coach names are inferred by
+the evaluator and stored inside the validated `structured_result` JSONB.
+
 For a local Supabase stack (Docker required):
 
 ```bash
@@ -86,7 +93,8 @@ npx supabase test db supabase/tests/database/evaluation_runs_test.sql
 
 `supabase/tests/database/evaluation_runs_test.sql` inserts queued Kick-off and
 Coaching runs, checks defaults and timestamps, checks rejection of invalid enum
-values, verifies the RLS posture, and rolls back all test records.
+values, verifies report-name persistence and the RLS posture, and rolls back
+all test records.
 
 To apply to a remote project after reviewing the target:
 

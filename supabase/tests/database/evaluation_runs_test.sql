@@ -2,10 +2,20 @@ begin;
 
 create extension if not exists pgtap with schema extensions;
 
-select plan(32);
+select plan(33);
 
-insert into public.evaluation_runs (call_type, rubric_version, transcript)
-values ('kickoff', 'kickoff-v1', 'Kick-off verification transcript.');
+insert into public.evaluation_runs (
+  report_name,
+  call_type,
+  rubric_version,
+  transcript
+)
+values (
+  'David August Kick-off',
+  'kickoff',
+  'kickoff-v1',
+  'Kick-off verification transcript.'
+);
 
 insert into public.evaluation_runs (call_type, rubric_version, transcript)
 values ('coaching', 'coaching-v2', 'Coaching verification transcript.');
@@ -31,6 +41,14 @@ select is(
    where transcript = 'Kick-off verification transcript.'),
   'Kick-off verification transcript.',
   'transcript persists unchanged'
+);
+
+select is(
+  (select report_name
+   from public.evaluation_runs
+   where transcript = 'Kick-off verification transcript.'),
+  'David August Kick-off',
+  'report name persists unchanged'
 );
 
 select ok(

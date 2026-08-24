@@ -207,7 +207,7 @@ function ProgressItem({
       type="button"
       onClick={onOpen}
       className="group block w-full px-5 py-4 text-left transition-colors hover:bg-zinc-50 focus:outline-hidden focus-visible:bg-zinc-50 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-zinc-900"
-      aria-label={`${statusDetails.label}: ${formatCallType(evaluation.callType)}`}
+      aria-label={`${statusDetails.label}: ${evaluation.reportName ?? formatCallType(evaluation.callType)}`}
     >
       <div className="flex items-start gap-3">
         <div
@@ -226,7 +226,7 @@ function ProgressItem({
           <div className="flex items-start justify-between gap-2">
             <div>
               <p className="text-xs font-semibold text-zinc-900">
-                {formatCallType(evaluation.callType)}
+                {evaluation.reportName ?? formatCallType(evaluation.callType)}
               </p>
               <p
                 className={cn(

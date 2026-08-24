@@ -16,6 +16,10 @@ import type {
   AutomaticRuleDefinition,
   DimensionDefinition,
 } from "@/lib/rubrics/schema";
+import {
+  analyzeTranscript,
+  getSpeakerWordShareByLabel,
+} from "@/lib/server/evaluation/transcript-metrics";
 
 export class EvaluationOutputValidationError extends Error {
   constructor(readonly issues: string[]) {
@@ -37,6 +41,41 @@ function automaticRuleById(
   ruleId: string
 ) {
   return rules.find((rule) => rule.id === ruleId);
+}
+
+function passesDeterministicGuard(
+  rule: AutomaticRuleDefinition,
+  transcriptMetrics: ReturnType<typeof analyzeTranscript>
+): boolean {
+  const guard = rule.deterministicGuard;
+  if (!guard) return true;
+
+  if (guard.kind === "speaker_word_share_above") {
+    const share = getSpeakerWordShareByLabel(
+      transcriptMetrics,
+      guard.speakerLabelIncludes
+    );
+    // An unlabelled transcript cannot be decided mechanically, so retain the
+    // model's decision rather than inventing a negative result.
+    return share === null || share > guard.thresholdPercent;
+  }
+
+  return true;
+}
+
+function canonicalRangeScore(
+  definition: DimensionDefinition,
+  minScore: number,
+  maxScore: number
+): number {
+  if (definition.scoring.mode !== "banded") return minScore;
+  const increment = definition.scoring.increment;
+  const midpointInIncrements = (minScore + maxScore) / 2 / increment;
+  // Round midpoint ties downward for a stable, conservative band score.
+  const roundedIncrements = Math.floor(midpointInIncrements + 0.5 - 1e-9);
+  return Number(
+    Math.min(maxScore, Math.max(minScore, roundedIncrements * increment)).toFixed(2)
+  );
 }
 
 function canonicalEvidenceCharacter(character: string): string {
@@ -116,8 +155,11 @@ export function validateEvaluationResult(
 
   const result = contractResult.data;
   const rubric = getRubricForCallType(run.callType);
+  const transcriptMetrics = analyzeTranscript(run.transcript);
   const reconcileEvidenceQuote = createEvidenceQuoteReconciler(run.transcript);
   const issues: string[] = [];
+  if (!result.clientName) issues.push("clientName is required for the report header");
+  if (!result.coachName) issues.push("coachName is required for the report header");
   if (rubric.version !== run.rubricVersion) {
     issues.push(`stored rubric ${run.rubricVersion} does not match ${rubric.version}`);
   }
@@ -130,13 +172,55 @@ export function validateEvaluationResult(
   ]);
   const appliedRuleIds = new Set<string>();
 
+  const normalizedAppliedRules: typeof result.appliedRules = [];
   result.appliedRules.forEach((appliedRule, index) => {
     if (!appliedRule.ruleId) {
       issues.push(`appliedRules.${index}.ruleId is required for persisted AI output`);
     } else if (!allowedRuleIds.has(appliedRule.ruleId)) {
       issues.push(`appliedRules.${index}.ruleId is not present in the rubric`);
+    } else if (appliedRuleIds.has(appliedRule.ruleId)) {
+      return;
     } else {
+      const automaticRule = automaticRuleById(
+        rubric.automaticRules,
+        appliedRule.ruleId
+      );
+      if (
+        automaticRule &&
+        !passesDeterministicGuard(automaticRule, transcriptMetrics)
+      ) {
+        return;
+      }
       appliedRuleIds.add(appliedRule.ruleId);
+      normalizedAppliedRules.push(appliedRule);
+    }
+  });
+  result.appliedRules = normalizedAppliedRules;
+
+  // Range-valued Kick-off bands otherwise let equally calibrated models pick
+  // different point values inside the same band. Preserve the model's band
+  // judgment, but standardize its exact points to the authored range midpoint.
+  result.dimensions.forEach((dimension, index) => {
+    if (dimension.disabled || dimension.score === null) return;
+    const definition = rubric.dimensions[index];
+    if (!definition) return;
+    const selectedBand = findScoreBand(definition, dimension.score);
+    if (
+      !selectedBand ||
+      selectedBand.scoreKind !== "range" ||
+      dimension.band !== selectedBand.label
+    ) {
+      return;
+    }
+
+    const canonicalScore = canonicalRangeScore(
+      definition,
+      selectedBand.minScore,
+      selectedBand.maxScore
+    );
+    if (dimension.score !== canonicalScore) {
+      dimension.reasoning = `${dimension.reasoning} The ${selectedBand.label} range was standardized to ${canonicalScore}/${definition.maxScore}.`;
+      dimension.score = canonicalScore;
     }
   });
 
@@ -206,6 +290,9 @@ export function validateEvaluationResult(
           issues.push(`dimensions.${index}.score uses invalid precision`);
         }
       }
+      if ((score ?? 0) > 0 && dimension.evidence.length === 0) {
+        issues.push(`dimensions.${index} requires evidence for a positive score`);
+      }
     }
 
     dimension.evidence.forEach((evidence, evidenceIndex) => {
@@ -238,6 +325,11 @@ export function validateEvaluationResult(
 
   return EvaluationResultSchema.parse({
     ...result,
+    oneThing: {
+      ...result.oneThing,
+      currentScore: expectedFinal,
+      potentialScore: Math.max(expectedFinal, result.oneThing.potentialScore),
+    },
     scoreSummary: {
       rawScore,
       maxPossible: activeMaximum,

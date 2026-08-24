@@ -20,6 +20,7 @@ interface ReportHeaderProps {
   evaluation: EvaluationPublicResponse;
   onDownloadPdf?: () => void;
   reportUrl?: string;
+  pdfUrl?: string;
   embedded?: boolean;
 }
 
@@ -27,6 +28,7 @@ export function ReportHeader({
   evaluation,
   onDownloadPdf,
   reportUrl,
+  pdfUrl,
   embedded = false,
 }: ReportHeaderProps) {
   const [copied, setCopied] = useState(false);
@@ -51,20 +53,10 @@ export function ReportHeader({
     }
   };
 
-  /**
-   * Isolated future handler boundary for PDF generation.
-   * Frontend-only interaction boundary without backend coupling.
-   */
-  const handleDownload = () => {
-    if (onDownloadPdf) {
-      onDownloadPdf();
-    } else if (typeof window !== "undefined") {
-      window.print();
-    }
-  };
-
   const isCompleted = evaluation.status === "completed";
   const Heading = embedded ? "h2" : "h1";
+  const clientName = evaluation.result?.clientName ?? evaluation.metadata?.clientName;
+  const coachName = evaluation.result?.coachName ?? evaluation.metadata?.repName;
 
   return (
     <header className="mb-6 pb-6 border-b border-zinc-200/80 relative">
@@ -102,9 +94,14 @@ export function ReportHeader({
           </div>
 
           <Heading className="text-2xl sm:text-3xl font-bold tracking-tight text-zinc-900">
-            {formatCallType(evaluation.callType)} Evaluation
-            {isCompleted ? " Report" : ""}
+            {evaluation.reportName ?? `${formatCallType(evaluation.callType)} Evaluation${isCompleted ? " Report" : ""}`}
           </Heading>
+
+          {clientName && coachName && (
+            <p className="mt-1.5 text-base font-medium text-zinc-700 sm:text-lg">
+              {clientName} coached by {coachName}
+            </p>
+          )}
 
           <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-zinc-500 mt-2">
             <span className="flex items-center gap-1.5 font-mono">
@@ -159,7 +156,7 @@ export function ReportHeader({
                 {copied ? "Report Link Copied" : "Share Report"}
               </ActionButton>
 
-              {embedded && reportUrl ? (
+              {embedded && reportUrl && (
                 <Link
                   href={reportUrl}
                   target="_blank"
@@ -169,16 +166,27 @@ export function ReportHeader({
                   <ExternalLink className="w-3.5 h-3.5" aria-hidden="true" />
                   Open report
                 </Link>
-              ) : (
+              )}
+
+              {pdfUrl ? (
+                <a
+                  href={pdfUrl}
+                  download
+                  className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-zinc-900 px-3 py-1.5 text-xs font-medium text-white shadow-xs transition-colors hover:bg-zinc-800 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-zinc-900 focus-visible:ring-offset-2"
+                >
+                  <Download className="w-3.5 h-3.5" aria-hidden="true" />
+                  Download PDF
+                </a>
+              ) : onDownloadPdf ? (
                 <ActionButton
                   variant="primary"
                   size="sm"
-                  onClick={handleDownload}
+                  onClick={onDownloadPdf}
                   leftIcon={<Download className="w-3.5 h-3.5" />}
                 >
                   Download PDF
                 </ActionButton>
-              )}
+              ) : null}
             </>
           )}
 

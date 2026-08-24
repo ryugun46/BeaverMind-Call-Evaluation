@@ -17,6 +17,7 @@ import { trackEvaluation } from "@/lib/client/evaluation-tracker";
 
 export function SubmissionForm() {
   const router = useRouter();
+  const [reportName, setReportName] = useState("");
   const [callType, setCallType] = useState<CallType>("kickoff");
   const [modelSlug, setModelSlug] = useState<EvaluationModelSlug>(
     DEFAULT_EVALUATION_MODEL
@@ -32,6 +33,13 @@ export function SubmissionForm() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    const trimmedReportName = reportName.trim();
+
+    if (!trimmedReportName) {
+      setError("Please name this report so it can be identified later.");
+      return;
+    }
 
     if (!callType) {
       setError("Please select a call type to proceed.");
@@ -58,7 +66,12 @@ export function SubmissionForm() {
       const response = await fetch("/api/evaluations", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ callType, modelSlug, transcript: trimmed }),
+        body: JSON.stringify({
+          reportName: trimmedReportName,
+          callType,
+          modelSlug,
+          transcript: trimmed,
+        }),
       });
       const body: unknown = await response.json();
       if (!response.ok) {
@@ -73,6 +86,7 @@ export function SubmissionForm() {
       trackEvaluation({
         id: created.id,
         evaluationUrl: created.evaluationUrl,
+        reportName: trimmedReportName,
         callType,
       });
       router.push(new URL(created.evaluationUrl).pathname);
@@ -88,6 +102,43 @@ export function SubmissionForm() {
 
   return (
     <form onSubmit={handleSubmit} className="space-y-6 animate-fade-in-up">
+      <fieldset className="space-y-4">
+        <div>
+          <legend className="text-sm font-semibold text-zinc-900">
+            Report details
+          </legend>
+          <p className="mt-1 text-xs leading-relaxed text-zinc-500">
+            Give this evaluation a recognizable name. Client and coach names
+            will be identified from the transcript.
+          </p>
+        </div>
+
+        <div>
+          <label
+            htmlFor="report-name"
+            className="mb-1.5 block text-xs font-medium text-zinc-700"
+          >
+            Report name
+          </label>
+          <input
+            id="report-name"
+            name="reportName"
+            type="text"
+            required
+            maxLength={120}
+            value={reportName}
+            onChange={(event) => {
+              setReportName(event.target.value);
+              if (error) setError(null);
+            }}
+            disabled={isSubmitting}
+            placeholder="e.g. David's August Kick-off"
+            className="w-full rounded-lg border border-zinc-300 bg-white px-3 py-2.5 text-sm text-zinc-900 shadow-2xs outline-hidden transition placeholder:text-zinc-400 focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200 disabled:cursor-not-allowed disabled:bg-zinc-50 disabled:text-zinc-500"
+          />
+        </div>
+
+      </fieldset>
+
       {/* 1. Call Type Selection */}
       <CallTypeSelector
         value={callType}

@@ -16,6 +16,7 @@ interface EvaluationReportProps {
   evaluation: EvaluationPublicResponse;
   onDownloadPdf?: () => void;
   reportUrl?: string;
+  pdfUrl?: string;
   embedded?: boolean;
 }
 
@@ -23,6 +24,7 @@ export function EvaluationReport({
   evaluation,
   onDownloadPdf,
   reportUrl,
+  pdfUrl,
   embedded = false,
 }: EvaluationReportProps) {
   const [selectedDimension, setSelectedDimension] = useState<number | null>(null);
@@ -41,6 +43,7 @@ export function EvaluationReport({
         evaluation={evaluation}
         onDownloadPdf={onDownloadPdf}
         reportUrl={reportUrl}
+        pdfUrl={pdfUrl}
         embedded={embedded}
       />
 

@@ -8,6 +8,7 @@ import {
   CheckCircle2,
   ChevronDown,
   ChevronUp,
+  Download,
   ExternalLink,
   FileSearch,
   History,
@@ -28,6 +29,7 @@ export interface EvaluationHistoryEntry {
   publicToken: string;
   evaluation: {
     id: string;
+    reportName?: string;
     callType: EvaluationPublicResponse["callType"];
     rubricVersion: string;
     status: "completed" | "failed";
@@ -253,9 +255,10 @@ export function EvaluationHistory({
 
                       <div>
                         <p className="text-sm font-semibold text-zinc-900">
-                          {isCompleted
-                            ? `${formatCallType(evaluation.callType)} evaluation report`
-                            : evaluation.error?.message ?? "Evaluation could not be completed"}
+                          {evaluation.reportName ??
+                            (isCompleted
+                              ? `${formatCallType(evaluation.callType)} evaluation report`
+                              : evaluation.error?.message ?? "Evaluation could not be completed")}
                         </p>
                         <p className="mt-1 text-xs text-zinc-500">
                           {formatDate(evaluation.createdAt)}
@@ -284,6 +287,14 @@ export function EvaluationHistory({
                           <ExternalLink className="h-3.5 w-3.5" aria-hidden="true" />
                           Report link
                         </Link>
+                        <a
+                          href={`/api/evaluations/${publicToken}/pdf`}
+                          download
+                          className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-zinc-200 bg-white px-3 py-2 text-xs font-medium text-zinc-700 shadow-2xs transition-colors hover:border-zinc-300 hover:bg-zinc-50 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-zinc-900 focus-visible:ring-offset-2"
+                        >
+                          <Download className="h-3.5 w-3.5" aria-hidden="true" />
+                          PDF
+                        </a>
                         <button
                           type="button"
                           onClick={() => void toggleReport(publicToken)}
@@ -323,6 +334,7 @@ export function EvaluationHistory({
                       <EvaluationReport
                         evaluation={loadedReport}
                         reportUrl={reportUrl}
+                        pdfUrl={`/api/evaluations/${publicToken}/pdf`}
                         embedded
                       />
                     </div>

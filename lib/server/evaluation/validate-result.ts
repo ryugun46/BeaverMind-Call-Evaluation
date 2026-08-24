@@ -20,6 +20,10 @@ import {
   analyzeTranscript,
   getSpeakerWordShareByLabel,
 } from "@/lib/server/evaluation/transcript-metrics";
+import {
+  locateTranscriptQuote,
+  parseTranscript,
+} from "@/lib/server/evaluation/transcript-structure";
 
 export class EvaluationOutputValidationError extends Error {
   constructor(readonly issues: string[]) {
@@ -78,68 +82,6 @@ function canonicalRangeScore(
   );
 }
 
-function canonicalEvidenceCharacter(character: string): string {
-  if (/\s/.test(character)) return " ";
-  if (/[‘’‚‛]/.test(character)) return "'";
-  if (/[“”„‟]/.test(character)) return '"';
-  if (/[‐‑‒–—―−]/.test(character)) return "-";
-  if (character === "…") return "...";
-  return character.toLocaleLowerCase();
-}
-
-function normalizeEvidenceText(value: string): string {
-  return Array.from(value)
-    .map(canonicalEvidenceCharacter)
-    .join("")
-    .replace(/ +/g, " ")
-    .trim();
-}
-
-/**
- * Recover the exact source slice when the model changed only casing,
- * whitespace, or common typographic punctuation. Substantive paraphrases do
- * not match and continue through normal validation failure/repair handling.
- */
-function createEvidenceQuoteReconciler(transcript: string) {
-  let normalizedTranscript: string | undefined;
-  const normalizedCharacters: string[] = [];
-  const sourceStarts: number[] = [];
-  const sourceEnds: number[] = [];
-
-  return (quote: string): string | null => {
-    if (transcript.includes(quote)) return quote;
-
-    const normalizedQuote = normalizeEvidenceText(quote);
-    if (!normalizedQuote) return null;
-
-    if (normalizedTranscript === undefined) {
-      let sourceOffset = 0;
-      for (const character of transcript) {
-        const start = sourceOffset;
-        sourceOffset += character.length;
-        const normalizedCharacter = canonicalEvidenceCharacter(character);
-
-        for (const outputCharacter of normalizedCharacter) {
-          if (outputCharacter === " " && normalizedCharacters.at(-1) === " ") {
-            sourceEnds[sourceEnds.length - 1] = sourceOffset;
-            continue;
-          }
-          normalizedCharacters.push(outputCharacter);
-          sourceStarts.push(start);
-          sourceEnds.push(sourceOffset);
-        }
-      }
-      normalizedTranscript = normalizedCharacters.join("");
-    }
-
-    const matchIndex = normalizedTranscript.indexOf(normalizedQuote);
-    if (matchIndex < 0) return null;
-
-    const matchEnd = matchIndex + normalizedQuote.length - 1;
-    return transcript.slice(sourceStarts[matchIndex], sourceEnds[matchEnd]);
-  };
-}
-
 export function validateEvaluationResult(
   value: unknown,
   run: Pick<EvaluationRun, "callType" | "transcript" | "rubricVersion">
@@ -156,7 +98,7 @@ export function validateEvaluationResult(
   const result = contractResult.data;
   const rubric = getRubricForCallType(run.callType);
   const transcriptMetrics = analyzeTranscript(run.transcript);
-  const reconcileEvidenceQuote = createEvidenceQuoteReconciler(run.transcript);
+  const parsedTranscript = parseTranscript(run.transcript);
   const issues: string[] = [];
   if (!result.clientName) issues.push("clientName is required for the report header");
   if (!result.coachName) issues.push("coachName is required for the report header");
@@ -296,13 +238,22 @@ export function validateEvaluationResult(
     }
 
     dimension.evidence.forEach((evidence, evidenceIndex) => {
-      const reconciledQuote = reconcileEvidenceQuote(evidence.quote);
-      if (reconciledQuote === null) {
+      const locatedQuote = locateTranscriptQuote(
+        run.transcript,
+        evidence.quote,
+        evidence.speaker,
+        parsedTranscript
+      );
+      if (locatedQuote === null) {
         issues.push(
           `dimensions.${index}.evidence.${evidenceIndex}.quote is not an exact transcript excerpt`
         );
       } else {
-        evidence.quote = reconciledQuote;
+        evidence.quote = locatedQuote.quote;
+        evidence.speaker = locatedQuote.speaker;
+        evidence.turnIndex = locatedQuote.turnIndex;
+        if (locatedQuote.timestamp) evidence.timestamp = locatedQuote.timestamp;
+        else delete evidence.timestamp;
       }
     });
   });

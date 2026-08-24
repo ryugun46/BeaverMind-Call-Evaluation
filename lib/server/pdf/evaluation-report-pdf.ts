@@ -442,7 +442,12 @@ export async function createEvaluationReportPdf(
         composer.text("No qualifying transcript evidence was found.", { color: COLORS.muted });
       } else {
         for (const evidence of dimension.evidence) {
-          composer.text(`${evidence.speaker}: "${evidence.quote}"`, {
+          const evidenceLocation = evidence.timestamp
+            ? ` [${evidence.timestamp}]`
+            : evidence.turnIndex !== undefined
+              ? ` [Turn ${evidence.turnIndex + 1}]`
+              : "";
+          composer.text(`${evidence.speaker}${evidenceLocation}: "${evidence.quote}"`, {
             size: 9,
             lineHeight: 13,
             color: COLORS.muted,

@@ -174,14 +174,32 @@ describe("API input and enums", () => {
       CreateEvaluationInputSchema.safeParse({
         reportName: "Jordan's Coaching Review",
         callType: "coaching",
-        modelSlug: "anthropic/claude-sonnet-4.6",
+        modelSlug: "openai/gpt-5.6-terra",
         transcript: "x".repeat(65 * 1024),
       }).success,
       true
     );
   });
 
-  it("accepts selectable OpenRouter models and rejects arbitrary model slugs", () => {
+  it("accepts allowlisted GPT models and rejects other model slugs", () => {
+    assert.equal(
+      CreateEvaluationInputSchema.safeParse({
+        reportName: "David's Kick-off",
+        callType: "kickoff",
+        modelSlug: "openai/gpt-5.6-sol",
+        transcript: "A sufficiently detailed coaching transcript.",
+      }).success,
+      true
+    );
+    assert.equal(
+      CreateEvaluationInputSchema.safeParse({
+        reportName: "David's Kick-off",
+        callType: "kickoff",
+        modelSlug: "anthropic/claude-sonnet-4.6",
+        transcript: "A sufficiently detailed coaching transcript.",
+      }).success,
+      false
+    );
     assert.equal(
       CreateEvaluationInputSchema.safeParse({
         reportName: "David's Kick-off",
@@ -189,7 +207,7 @@ describe("API input and enums", () => {
         modelSlug: "google/gemini-2.5-pro",
         transcript: "A sufficiently detailed coaching transcript.",
       }).success,
-      true
+      false
     );
     assert.equal(
       CreateEvaluationInputSchema.safeParse({

@@ -1,5 +1,7 @@
 import "server-only";
 
+import { countTranscriptWords, parseTranscript } from "@/lib/server/evaluation/transcript-structure";
+
 export interface TranscriptSpeakerMetric {
   label: string;
   wordCount: number;
@@ -11,14 +13,9 @@ export interface TranscriptSpeakerMetric {
 export interface TranscriptMetrics {
   parsedTurnCount: number;
   parsedWordCount: number;
+  labelledWordCoverage: number;
+  speakerAttributionReliable: boolean;
   speakers: TranscriptSpeakerMetric[];
-}
-
-const SPEAKER_LINE = /^\s*(?:\[[^\]]+\]\s*)?([A-Za-z][A-Za-z0-9 _().'-]{0,79}):\s*(.*)$/;
-const WORD = /[A-Za-z0-9]+(?:['’][A-Za-z0-9]+)*/g;
-
-function countWords(value: string): number {
-  return value.match(WORD)?.length ?? 0;
 }
 
 /**
@@ -27,43 +24,25 @@ function countWords(value: string): number {
  * to the most recently recognized speaker.
  */
 export function analyzeTranscript(transcript: string): TranscriptMetrics {
+  const parsed = parseTranscript(transcript);
   const speakers = new Map<
     string,
     Omit<TranscriptSpeakerMetric, "wordSharePercent">
   >();
-  let currentSpeakerKey: string | null = null;
-  let parsedTurnCount = 0;
-
-  const addText = (speakerKey: string, text: string) => {
-    const metric = speakers.get(speakerKey);
-    if (!metric) return;
-    metric.wordCount += countWords(text);
-    metric.questionMarkCount += Array.from(text).filter(
-      (character) => character === "?"
-    ).length;
-  };
-
-  for (const line of transcript.split(/\r?\n/)) {
-    const match = SPEAKER_LINE.exec(line);
-    if (match) {
-      const label = match[1]!.trim();
-      const speakerKey = label.toLocaleLowerCase();
-      currentSpeakerKey = speakerKey;
-      parsedTurnCount += 1;
-      const current = speakers.get(speakerKey);
-      if (current) {
-        current.turnCount += 1;
-      } else {
-        speakers.set(speakerKey, {
-          label,
-          wordCount: 0,
-          questionMarkCount: 0,
-          turnCount: 1,
-        });
-      }
-      addText(speakerKey, match[2] ?? "");
-    } else if (currentSpeakerKey && line.trim()) {
-      addText(currentSpeakerKey, line);
+  for (const turn of parsed.turns) {
+    const speakerKey = turn.speaker.toLocaleLowerCase();
+    const current = speakers.get(speakerKey);
+    if (current) {
+      current.turnCount += 1;
+      current.wordCount += countTranscriptWords(turn.text);
+      current.questionMarkCount += Array.from(turn.text).filter((character) => character === "?").length;
+    } else {
+      speakers.set(speakerKey, {
+        label: turn.speaker,
+        wordCount: countTranscriptWords(turn.text),
+        questionMarkCount: Array.from(turn.text).filter((character) => character === "?").length,
+        turnCount: 1,
+      });
     }
   }
 
@@ -73,8 +52,10 @@ export function analyzeTranscript(transcript: string): TranscriptMetrics {
   );
 
   return {
-    parsedTurnCount,
+    parsedTurnCount: parsed.turns.length,
     parsedWordCount,
+    labelledWordCoverage: parsed.labelledWordCoverage,
+    speakerAttributionReliable: parsed.attributionReliable,
     speakers: Array.from(speakers.values()).map((speaker) => ({
       ...speaker,
       wordSharePercent:

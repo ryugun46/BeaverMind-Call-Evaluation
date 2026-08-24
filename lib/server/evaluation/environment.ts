@@ -8,6 +8,10 @@ const OpenRouterEnvironmentSchema = z.object({
   OPENROUTER_APP_TITLE: z.string().trim().min(1).default("BeaverMind Call Evaluation"),
   OPENROUTER_TIMEOUT_MS: z.coerce.number().int().min(1_000).max(300_000).default(180_000),
   OPENROUTER_MAX_TOKENS: z.coerce.number().int().min(1_000).max(64_000).default(16_000),
+  EVALUATION_LARGE_TRANSCRIPT_WORDS: z.coerce.number().int().min(1_000).max(100_000).default(6_000),
+  EVALUATION_CHUNK_WORDS: z.coerce.number().int().min(500).max(12_000).default(2_400),
+  EVALUATION_CHUNK_OVERLAP_TURNS: z.coerce.number().int().min(0).max(20).default(2),
+  EVALUATION_MAP_CONCURRENCY: z.coerce.number().int().min(1).max(8).default(3),
   EVALUATION_WORKER_POLL_MS: z.coerce.number().int().min(250).max(60_000).default(2_000),
 });
 

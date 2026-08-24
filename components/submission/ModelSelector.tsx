@@ -1,12 +1,7 @@
 "use client";
 
 import type { EvaluationModelSlug } from "@/lib/evaluation-models";
-import {
-  EVALUATION_MODEL_OPTIONS,
-  type EvaluationModelFamily,
-} from "@/lib/evaluation-models";
-
-const MODEL_FAMILIES: EvaluationModelFamily[] = ["GPT", "Claude", "Gemini"];
+import { EVALUATION_MODEL_OPTIONS } from "@/lib/evaluation-models";
 
 type ModelSelectorProps = {
   value: EvaluationModelSlug;
@@ -37,16 +32,10 @@ export function ModelSelector({
         disabled={disabled}
         className="w-full rounded-xl border border-zinc-200 bg-white px-4 py-3 text-sm font-medium text-zinc-900 shadow-xs outline-none transition focus:border-zinc-400 focus:ring-2 focus:ring-zinc-900/10 disabled:cursor-not-allowed disabled:opacity-50"
       >
-        {MODEL_FAMILIES.map((family) => (
-          <optgroup key={family} label={family}>
-            {EVALUATION_MODEL_OPTIONS.filter(
-              (model) => model.family === family
-            ).map((model) => (
-              <option key={model.slug} value={model.slug}>
-                {model.name} — {model.tier}
-              </option>
-            ))}
-          </optgroup>
+        {EVALUATION_MODEL_OPTIONS.map((model) => (
+          <option key={model.slug} value={model.slug}>
+            {model.name} — {model.tier}
+          </option>
         ))}
       </select>
       <p className="text-xs leading-relaxed text-zinc-500">

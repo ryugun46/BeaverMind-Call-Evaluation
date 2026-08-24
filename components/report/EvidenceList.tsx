@@ -51,7 +51,11 @@ export function EvidenceList({ evidence, className }: EvidenceListProps) {
                       {item.speaker}
                     </span>
                     <span className="text-[10px] uppercase font-mono tracking-wider text-zinc-400 font-medium">
-                      Verbatim Quote
+                      {item.timestamp
+                        ? `Verbatim Quote · ${item.timestamp}`
+                        : item.turnIndex !== undefined
+                          ? `Verbatim Quote · Turn ${item.turnIndex + 1}`
+                          : "Verbatim Quote"}
                     </span>
                   </div>
                   <Quote className="w-3.5 h-3.5 text-zinc-300 shrink-0" />

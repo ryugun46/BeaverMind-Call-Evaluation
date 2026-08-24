@@ -149,7 +149,7 @@ test("repository creates a queued run with the authoritative rubric version", as
   const created = await repository.create({
     reportName: "  David's August Kick-off  ",
     callType: "kickoff",
-    modelSlug: "anthropic/claude-sonnet-4.6",
+    modelSlug: "openai/gpt-5.6-terra",
     transcript: "  A persisted transcript.  ",
   });
 
@@ -166,7 +166,7 @@ test("repository creates a queued run with the authoritative rubric version", as
       transcript: "A persisted transcript.",
       rubric_version: "kickoff-v1",
       model_provider: "openrouter",
-      model_name: "anthropic/claude-sonnet-4.6",
+      model_name: "openai/gpt-5.6-terra",
     },
   });
 });
@@ -239,7 +239,7 @@ test("repository rejects an oversized UTF-8 transcript before querying", async (
     repository.create({
       reportName: "Jordan's Coaching Review",
       callType: "coaching",
-      modelSlug: "google/gemini-3.7-flash",
+      modelSlug: "openai/gpt-5.6-luna",
       transcript,
     }),
     TranscriptTooLargeError

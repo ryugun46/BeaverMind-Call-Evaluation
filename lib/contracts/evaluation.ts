@@ -81,14 +81,14 @@ export type DimensionBand = z.infer<typeof DimensionBandSchema>;
  * A verbatim transcript quote used as evidence for a dimension score.
  *
  * - `quote` MUST be exact text from the transcript — not paraphrased.
- * - No timestamps because source transcripts do not contain them.
- * - `turnIndex` is optional and may be populated by future AI tooling if
- *   the transcript is pre-processed into structured turns.
+ * - `timestamp` is populated only when the source turn contains one.
+ * - `turnIndex` is deterministically populated by transcript preprocessing.
  */
 export const EvidenceItemSchema = z.object({
   speaker: z.string().min(1, "Speaker label must not be empty"),
   quote: z.string().min(1, "Quote must not be empty"),
   turnIndex: z.number().int().nonnegative().optional(),
+  timestamp: z.string().trim().min(1).max(32).optional(),
 });
 export type EvidenceItem = z.infer<typeof EvidenceItemSchema>;
 

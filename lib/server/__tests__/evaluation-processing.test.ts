@@ -29,6 +29,11 @@ import {
   analyzeTranscript,
   getSpeakerWordShareByLabel,
 } from "@/lib/server/evaluation/transcript-metrics";
+import {
+  chunkTranscript,
+  locateTranscriptQuote,
+  parseTranscript,
+} from "@/lib/server/evaluation/transcript-structure";
 import type { EvaluationLifecycleUpdate } from "@/lib/server/repositories/evaluation-runs";
 import { PersistedEvaluationRunSchema } from "@/lib/server/repositories/evaluation-runs";
 
@@ -112,6 +117,8 @@ test("Phase 2 reconciles formatting-only evidence differences to the exact sourc
   const validated = validateEvaluationResult(candidate, completedFixture);
 
   assert.equal(validated.dimensions[0]!.evidence[0]!.quote, exactQuote);
+  assert.equal(validated.dimensions[0]!.evidence[0]!.speaker, "Coach (Sarah)");
+  assert.equal(validated.dimensions[0]!.evidence[0]!.turnIndex, 0);
 });
 
 test("Phase 2 applies recorded dimension rules and recalculates totals", () => {
@@ -172,6 +179,40 @@ test("transcript metrics provide deterministic labelled-speaker shares", () => {
   assert.equal(metrics.parsedWordCount, 6);
   assert.equal(getSpeakerWordShareByLabel(metrics, "coach"), 66.67);
   assert.equal(metrics.speakers[0]?.questionMarkCount, 1);
+  assert.equal(metrics.speakerAttributionReliable, true);
+});
+
+test("transcript parsing retains timestamps, continuation text, and source attribution", () => {
+  const transcript = [
+    "[00:01:12] Coach (Sam): What changed this week?",
+    "Please include even the small wins.",
+    "00:01:19 Client: My back feels better.",
+  ].join("\n");
+  const parsed = parseTranscript(transcript);
+
+  assert.equal(parsed.turns.length, 2);
+  assert.equal(parsed.turns[0]?.timestamp, "00:01:12");
+  assert.match(parsed.turns[0]?.text ?? "", /small wins/);
+  assert.equal(parsed.attributionReliable, true);
+
+  const located = locateTranscriptQuote(transcript, "Please include even the small wins.", "Coach", parsed);
+  assert.equal(located?.speaker, "Coach (Sam)");
+  assert.equal(located?.turnIndex, 0);
+  assert.equal(located?.timestamp, "00:01:12");
+});
+
+test("smart chunking stays turn-aligned and overlaps source turns", () => {
+  const transcript = Array.from({ length: 12 }, (_, index) =>
+    `${index % 2 === 0 ? "Coach" : "Client"}: turn ${index} ${"detail ".repeat(8)}`
+  ).join("\n");
+  const chunks = chunkTranscript(transcript, { maxWords: 35, overlapTurns: 1 });
+
+  assert.ok(chunks.length > 2);
+  assert.equal(chunks[0]?.sourceStart, 0);
+  assert.equal(chunks.at(-1)?.sourceEnd, transcript.length);
+  for (let index = 1; index < chunks.length; index += 1) {
+    assert.ok(chunks[index]!.firstTurnIndex <= chunks[index - 1]!.lastTurnIndex);
+  }
 });
 
 test("OpenRouter provider requests strict structured output and parses JSON", async () => {
@@ -247,6 +288,65 @@ test("OpenRouter provider requests strict structured output and parses JSON", as
   inspect(responseSchema);
   assert.deepEqual(incompleteObjects, []);
   assert.deepEqual(unsupportedAnnotations, []);
+});
+
+test("large transcripts use chunk evidence maps and a compact final dossier", async () => {
+  const longTranscript = Array.from({ length: 130 }, (_, index) =>
+    `${index % 2 === 0 ? "Coach" : "Client"}: segment ${index} ${"context ".repeat(9)}${index === 129 ? "unique_final_marker" : ""}`
+  ).join("\n");
+  const run = { ...processingRun, transcript: longTranscript };
+  const environment = getOpenRouterEnvironment({
+    OPENROUTER_API_KEY: "openrouter-secret",
+    EVALUATION_LARGE_TRANSCRIPT_WORDS: "1000",
+    EVALUATION_CHUNK_WORDS: "500",
+    EVALUATION_CHUNK_OVERLAP_TURNS: "2",
+    EVALUATION_MAP_CONCURRENCY: "2",
+  });
+  const requests: Array<Record<string, any>> = [];
+  const provider = createOpenRouterProvider(
+    "anthropic/claude-sonnet-4.6",
+    environment,
+    async (_input, init) => {
+      const body = JSON.parse(String(init?.body)) as Record<string, any>;
+      requests.push(body);
+      const schemaName = body.response_format?.json_schema?.name;
+      const content = schemaName === "beavermind_transcript_evidence_map"
+        ? {
+            chunkSummary: "This source interval was reviewed against every target.",
+            speakerRoles: [
+              { label: "Coach", role: "coach", personalName: null },
+              { label: "Client", role: "client", personalName: null },
+            ],
+            moments: [],
+          }
+        : completedResult;
+      return new Response(
+        JSON.stringify({ choices: [{ message: { content: JSON.stringify(content) } }] }),
+        { status: 200, headers: { "Content-Type": "application/json" } }
+      );
+    }
+  );
+
+  await provider.evaluate(run);
+  const mapRequests = requests.filter(
+    (request) => request.response_format?.json_schema?.name === "beavermind_transcript_evidence_map"
+  );
+  const finalRequest = requests.at(-1)!;
+  const finalMessages = JSON.stringify(finalRequest.messages);
+
+  assert.ok(mapRequests.length >= 3);
+  assert.equal(requests.length, mapRequests.length + 1);
+  assert.match(finalMessages, /LARGE-TRANSCRIPT EVIDENCE DOSSIER/);
+  assert.doesNotMatch(finalMessages, /unique_final_marker/);
+
+  await provider.evaluate(run, { previousResult: completedResult, issues: ["test repair"] });
+  assert.equal(
+    requests.filter(
+      (request) => request.response_format?.json_schema?.name === "beavermind_transcript_evidence_map"
+    ).length,
+    mapRequests.length,
+    "repair should reuse the cached evidence map"
+  );
 });
 
 test("GPT-5.6 requests use a supported repeatability seed", async () => {

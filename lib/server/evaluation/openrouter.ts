@@ -11,9 +11,82 @@ import {
 import { buildEvaluationMessages } from "@/lib/server/evaluation/prompt";
 
 const OPENROUTER_CHAT_URL = "https://openrouter.ai/api/v1/chat/completions";
-const RESULT_JSON_SCHEMA = z.toJSONSchema(EvaluationResultSchema, {
+const DOMAIN_RESULT_JSON_SCHEMA = z.toJSONSchema(EvaluationResultSchema, {
   target: "draft-7",
 });
+
+type JsonObject = Record<string, unknown>;
+
+function isJsonObject(value: unknown): value is JsonObject {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+/**
+ * OpenAI strict structured outputs require every object property to be listed
+ * in `required`. Domain-optional fields are represented as required nullable
+ * fields for generation, then normalized back to omission before validation.
+ */
+export function toStrictProviderSchema(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(toStrictProviderSchema);
+  if (!isJsonObject(value)) return value;
+
+  const output: JsonObject = {};
+  for (const [key, child] of Object.entries(value)) {
+    if (["$schema", "default", "properties", "required", "additionalProperties"].includes(key)) {
+      continue;
+    }
+    output[key] = toStrictProviderSchema(child);
+  }
+
+  if (isJsonObject(value.properties)) {
+    const originallyRequired = new Set(
+      Array.isArray(value.required)
+        ? value.required.filter((item): item is string => typeof item === "string")
+        : []
+    );
+    const properties: JsonObject = {};
+    for (const [name, propertySchema] of Object.entries(value.properties)) {
+      const strictPropertySchema = toStrictProviderSchema(propertySchema);
+      properties[name] = originallyRequired.has(name)
+        ? strictPropertySchema
+        : { anyOf: [strictPropertySchema, { type: "null" }] };
+    }
+    output.properties = properties;
+    output.required = Object.keys(properties);
+    output.additionalProperties = false;
+  }
+
+  return output;
+}
+
+export function normalizeProviderResult(
+  value: unknown,
+  schema: unknown = DOMAIN_RESULT_JSON_SCHEMA
+): unknown {
+  if (Array.isArray(value)) {
+    const itemSchema = isJsonObject(schema) ? schema.items : undefined;
+    return value.map((item) => normalizeProviderResult(item, itemSchema));
+  }
+  if (!isJsonObject(value) || !isJsonObject(schema)) return value;
+
+  const properties = isJsonObject(schema.properties) ? schema.properties : {};
+  const required = new Set(
+    Array.isArray(schema.required)
+      ? schema.required.filter((item): item is string => typeof item === "string")
+      : []
+  );
+  const normalized: JsonObject = {};
+  for (const [key, child] of Object.entries(value)) {
+    const propertySchema = properties[key];
+    if (child === null && propertySchema !== undefined && !required.has(key)) {
+      continue;
+    }
+    normalized[key] = normalizeProviderResult(child, propertySchema);
+  }
+  return normalized;
+}
+
+const RESULT_JSON_SCHEMA = toStrictProviderSchema(DOMAIN_RESULT_JSON_SCHEMA);
 
 const OpenRouterResponseSchema = z.object({
   model: z.string().optional(),
@@ -176,7 +249,7 @@ export function createOpenRouterProvider(
       }
 
       try {
-        return JSON.parse(content) as unknown;
+        return normalizeProviderResult(JSON.parse(content) as unknown);
       } catch (error) {
         throw new OpenRouterRequestError(
           `OpenRouter returned invalid JSON: ${error instanceof Error ? error.message : "parse failed"}`

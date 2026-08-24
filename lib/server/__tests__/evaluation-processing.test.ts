@@ -12,7 +12,9 @@ import {
 } from "@/lib/server/evaluation/environment";
 import {
   createOpenRouterProvider,
+  normalizeProviderResult,
   OpenRouterRequestError,
+  toStrictProviderSchema,
   type EvaluationProvider,
 } from "@/lib/server/evaluation/openrouter";
 import {
@@ -90,6 +92,66 @@ test("OpenRouter provider requests strict structured output and parses JSON", as
     "json_schema"
   );
   assert.deepEqual(capturedBody?.provider, { require_parameters: true });
+
+  const responseSchema = (
+    capturedBody?.response_format as {
+      json_schema?: { schema?: Record<string, unknown> };
+    }
+  )?.json_schema?.schema;
+  assert.ok(responseSchema);
+
+  const incompleteObjects: string[] = [];
+  const unsupportedAnnotations: string[] = [];
+  const inspect = (value: unknown, path = "$") => {
+    if (Array.isArray(value)) {
+      value.forEach((item, index) => inspect(item, `${path}[${index}]`));
+      return;
+    }
+    if (!value || typeof value !== "object") return;
+    const object = value as Record<string, unknown>;
+    if ("$schema" in object || "default" in object) {
+      unsupportedAnnotations.push(path);
+    }
+    if (object.type === "object" && object.properties) {
+      const propertyNames = Object.keys(object.properties as object);
+      const required = new Set(
+        Array.isArray(object.required) ? object.required : []
+      );
+      if (propertyNames.some((name) => !required.has(name))) {
+        incompleteObjects.push(path);
+      }
+    }
+    Object.entries(object).forEach(([key, child]) => inspect(child, `${path}.${key}`));
+  };
+  inspect(responseSchema);
+  assert.deepEqual(incompleteObjects, []);
+  assert.deepEqual(unsupportedAnnotations, []);
+});
+
+test("provider schema normalizes nullable domain-optional fields back to omission", () => {
+  const candidate = structuredClone(completedResult) as unknown as Record<string, any>;
+  candidate.oneThing.affectedDimensionNumbers = null;
+  candidate.dimensions[0].evidence[0].turnIndex = null;
+
+  const normalized = normalizeProviderResult(candidate) as Record<string, any>;
+
+  assert.equal("affectedDimensionNumbers" in normalized.oneThing, false);
+  assert.equal("turnIndex" in normalized.dimensions[0].evidence[0], false);
+  assert.doesNotThrow(() => EvaluationResultSchema.parse(normalized));
+});
+
+test("strict provider schema keeps the root object shape", () => {
+  const schema = toStrictProviderSchema({
+    type: "object",
+    properties: { requiredValue: { type: "string" }, optionalValue: { type: "number" } },
+    required: ["requiredValue"],
+    additionalProperties: false,
+  }) as Record<string, any>;
+
+  assert.deepEqual(schema.required, ["requiredValue", "optionalValue"]);
+  assert.deepEqual(schema.properties.optionalValue, {
+    anyOf: [{ type: "number" }, { type: "null" }],
+  });
 });
 
 test("OpenRouter provider turns request timeouts into structured provider errors", async () => {

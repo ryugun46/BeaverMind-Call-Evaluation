@@ -14,12 +14,34 @@ export type ServerEnvironment = z.infer<typeof ServerEnvironmentSchema>;
 
 let cachedEnvironment: ServerEnvironment | undefined;
 
+function firstConfiguredValue(
+  source: Readonly<Record<string, string | undefined>>,
+  names: readonly string[]
+): string | undefined {
+  for (const name of names) {
+    const value = source[name]?.trim();
+    if (value) return value;
+  }
+  return undefined;
+}
+
 export function getServerEnvironment(
   source: Readonly<Record<string, string | undefined>> = process.env
 ): ServerEnvironment {
   if (source === process.env && cachedEnvironment) return cachedEnvironment;
 
-  const parsed = ServerEnvironmentSchema.safeParse(source);
+  const parsed = ServerEnvironmentSchema.safeParse({
+    SUPABASE_URL: firstConfiguredValue(source, [
+      "SUPABASE_URL",
+      "beaver_SUPABASE_URL",
+      "BEAVER_SUPABASE_URL",
+    ]),
+    SUPABASE_SECRET_KEY: firstConfiguredValue(source, [
+      "SUPABASE_SECRET_KEY",
+      "beaver_SUPABASE_SECRET_KEY",
+      "BEAVER_SUPABASE_SECRET_KEY",
+    ]),
+  });
   if (!parsed.success) {
     const details = parsed.error.issues
       .map((issue) => `${issue.path.join(".")}: ${issue.message}`)

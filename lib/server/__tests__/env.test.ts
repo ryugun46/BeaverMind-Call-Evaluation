@@ -23,6 +23,32 @@ test("server environment accepts only the required backend credentials", () => {
   assert.equal(client.supabaseKey, "server-secret");
 });
 
+test("server environment accepts lowercase Beaver-prefixed Vercel credentials", () => {
+  const environment = getServerEnvironment({
+    beaver_SUPABASE_URL: "https://project.supabase.co",
+    beaver_SUPABASE_SECRET_KEY: "prefixed-server-secret",
+  });
+
+  assert.deepEqual(environment, {
+    SUPABASE_URL: "https://project.supabase.co",
+    SUPABASE_SECRET_KEY: "prefixed-server-secret",
+  });
+});
+
+test("unprefixed server credentials take precedence over integration aliases", () => {
+  const environment = getServerEnvironment({
+    SUPABASE_URL: "https://primary.supabase.co",
+    SUPABASE_SECRET_KEY: "primary-server-secret",
+    beaver_SUPABASE_URL: "https://prefixed.supabase.co",
+    beaver_SUPABASE_SECRET_KEY: "prefixed-server-secret",
+  });
+
+  assert.deepEqual(environment, {
+    SUPABASE_URL: "https://primary.supabase.co",
+    SUPABASE_SECRET_KEY: "primary-server-secret",
+  });
+});
+
 test("browser-exposed variables cannot satisfy server credential validation", () => {
   assert.throws(
     () =>

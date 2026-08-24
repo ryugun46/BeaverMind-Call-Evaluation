@@ -13,6 +13,7 @@ import {
   type EvaluationModelSlug,
 } from "@/lib/evaluation-models";
 import { ModelSelector } from "./ModelSelector";
+import { trackEvaluation } from "@/lib/client/evaluation-tracker";
 
 export function SubmissionForm() {
   const router = useRouter();
@@ -69,6 +70,11 @@ export function SubmissionForm() {
       }
 
       const created = CreateEvaluationResponseSchema.parse(body);
+      trackEvaluation({
+        id: created.id,
+        evaluationUrl: created.evaluationUrl,
+        callType,
+      });
       router.push(new URL(created.evaluationUrl).pathname);
     } catch (submissionError) {
       setError(

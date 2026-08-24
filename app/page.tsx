@@ -3,6 +3,7 @@ import Link from "next/link";
 import { PageContainer } from "@/components/layout/PageContainer";
 import { SubmissionForm } from "@/components/submission/SubmissionForm";
 import { Sparkles, Layers, ArrowRight } from "lucide-react";
+import { EvaluationProgressPanel } from "@/components/evaluation/EvaluationProgressPanel";
 
 export default function HomePage() {
   const showDevelopmentFixtures = process.env.NODE_ENV !== "production";
@@ -41,7 +42,7 @@ export default function HomePage() {
   ];
 
   return (
-    <PageContainer size="md" className="py-6 sm:py-8 space-y-8">
+    <PageContainer size="lg" className="py-6 sm:py-8 space-y-8">
       {/* 1. Concise Header Area */}
       <div className="max-w-2xl">
         <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-zinc-100 border border-zinc-200 text-xs font-medium text-zinc-700 mb-3 font-mono">
@@ -58,38 +59,46 @@ export default function HomePage() {
         </p>
       </div>
 
-      {/* 2. Primary Submission Card */}
-      <div className="bg-white rounded-2xl border border-zinc-200 p-6 sm:p-8 shadow-xs">
-        <SubmissionForm />
-      </div>
+      <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_20rem] lg:items-start">
+        <div className="space-y-8">
+          {/* 2. Primary Submission Card */}
+          <div className="bg-white rounded-2xl border border-zinc-200 p-6 sm:p-8 shadow-xs">
+            <SubmissionForm />
+          </div>
 
-      {/* 3. Compact Informational "What happens next" section */}
-      <section
-        aria-labelledby="what-happens-next-heading"
-        className="bg-white rounded-2xl border border-zinc-200 p-6 sm:p-7 shadow-xs space-y-4"
-      >
-        <div className="flex items-center gap-2 border-b border-zinc-100 pb-3">
-          <Layers className="w-4 h-4 text-zinc-500" />
-          <h2
-            id="what-happens-next-heading"
-            className="text-xs font-semibold uppercase tracking-wider text-zinc-600 font-mono"
+          {/* 3. Compact Informational "What happens next" section */}
+          <section
+            aria-labelledby="what-happens-next-heading"
+            className="bg-white rounded-2xl border border-zinc-200 p-6 sm:p-7 shadow-xs space-y-4"
           >
-            What happens next
-          </h2>
+            <div className="flex items-center gap-2 border-b border-zinc-100 pb-3">
+              <Layers className="w-4 h-4 text-zinc-500" />
+              <h2
+                id="what-happens-next-heading"
+                className="text-xs font-semibold uppercase tracking-wider text-zinc-600 font-mono"
+              >
+                What happens next
+              </h2>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-1">
+              {steps.map((s) => (
+                <div key={s.num} className="flex flex-col space-y-1 text-xs">
+                  <span className="w-6 h-6 rounded-full bg-zinc-100 border border-zinc-200/80 text-zinc-700 font-mono font-semibold flex items-center justify-center mb-1 text-[11px]">
+                    {s.num}
+                  </span>
+                  <strong className="text-zinc-900 font-medium">{s.title}</strong>
+                  <p className="text-zinc-500 leading-relaxed font-normal">{s.desc}</p>
+                </div>
+              ))}
+            </div>
+          </section>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 pt-1">
-          {steps.map((s) => (
-            <div key={s.num} className="flex flex-col space-y-1 text-xs">
-              <span className="w-6 h-6 rounded-full bg-zinc-100 border border-zinc-200/80 text-zinc-700 font-mono font-semibold flex items-center justify-center mb-1 text-[11px]">
-                {s.num}
-              </span>
-              <strong className="text-zinc-900 font-medium">{s.title}</strong>
-              <p className="text-zinc-500 leading-relaxed font-normal">{s.desc}</p>
-            </div>
-          ))}
-        </div>
-      </section>
+        <aside className="lg:sticky lg:top-20">
+          <EvaluationProgressPanel />
+        </aside>
+      </div>
 
       {/* Development-only fixture inspector */}
       {showDevelopmentFixtures && (

@@ -7,6 +7,7 @@ import { FailedState } from "@/components/evaluation/FailedState";
 import { ProcessingState } from "@/components/evaluation/ProcessingState";
 import { QueuedState } from "@/components/evaluation/QueuedState";
 import { EvaluationReport } from "@/components/report/EvaluationReport";
+import { updateTrackedEvaluationStatus } from "@/lib/client/evaluation-tracker";
 
 interface EvaluationRunViewProps {
   initialEvaluation: EvaluationPublicResponse;
@@ -18,6 +19,12 @@ export function EvaluationRunView({
   publicToken,
 }: EvaluationRunViewProps) {
   const [evaluation, setEvaluation] = useState(initialEvaluation);
+
+  useEffect(() => {
+    if (publicToken) {
+      updateTrackedEvaluationStatus(publicToken, evaluation.status);
+    }
+  }, [evaluation.status, publicToken]);
 
   useEffect(() => {
     if (!publicToken || !["queued", "processing"].includes(evaluation.status)) {

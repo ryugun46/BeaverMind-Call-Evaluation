@@ -85,7 +85,8 @@ lib/
 ```
 
 Database/RLS documentation lives in `docs/database.md`; the evaluation worker
-and HTTP flow are documented in `docs/processing.md`.
+and HTTP flow are documented in `docs/processing.md`. Production problems and
+their resolutions are tracked in `docs/project-issue-log.md`.
 
 ---
 

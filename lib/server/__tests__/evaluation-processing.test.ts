@@ -92,6 +92,25 @@ test("OpenRouter provider requests strict structured output and parses JSON", as
   assert.deepEqual(capturedBody?.provider, { require_parameters: true });
 });
 
+test("OpenRouter provider turns request timeouts into structured provider errors", async () => {
+  const environment = getOpenRouterEnvironment({
+    OPENROUTER_API_KEY: "openrouter-secret",
+  });
+  const provider = createOpenRouterProvider(
+    "provider/model",
+    environment,
+    async () => {
+      throw new DOMException("timed out", "TimeoutError");
+    }
+  );
+
+  await assert.rejects(provider.evaluate(processingRun), (error: unknown) => {
+    assert.ok(error instanceof OpenRouterRequestError);
+    assert.equal(error.responseCode, "timeout");
+    return true;
+  });
+});
+
 function repositoryThatClaims(
   provider: EvaluationProvider,
   updates: EvaluationLifecycleUpdate[]
@@ -209,6 +228,10 @@ test("processor marks a claimed run failed when provider construction fails", as
       failure.error.message,
       "The evaluation worker is not configured correctly."
     );
+    assert.deepEqual(failure.error.details, {
+      configurationIssue:
+        "Invalid evaluation environment: OPENROUTER_API_KEY is required",
+    });
   }
 });
 
@@ -238,4 +261,35 @@ test("processor persists a structured provider failure", async () => {
       providerCode: "rate_limit",
     });
   }
+});
+
+test("processor retries a transient terminal persistence failure", async () => {
+  let attempts = 0;
+  const repository = repositoryThatClaims(
+    {
+      providerName: "openrouter",
+      modelName: "provider/model",
+      async evaluate() {
+        return completedResult;
+      },
+    },
+    []
+  );
+  const originalUpdate = repository.updateLifecycle;
+  repository.updateLifecycle = async (id, update) => {
+    attempts += 1;
+    if (attempts < 3) throw new Error("temporary database failure");
+    return originalUpdate(id, update);
+  };
+
+  const result = await createEvaluationProcessor(repository, {
+    providerName: "openrouter",
+    modelName: "provider/model",
+    async evaluate() {
+      return completedResult;
+    },
+  }).processNext();
+
+  assert.equal(result?.status, "completed");
+  assert.equal(attempts, 3);
 });

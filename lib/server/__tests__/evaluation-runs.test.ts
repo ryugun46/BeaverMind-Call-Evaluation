@@ -44,6 +44,9 @@ type Request = {
   action?: "insert" | "select" | "update" | "rpc";
   values?: unknown;
   filter?: [string, unknown];
+  inFilter?: [string, unknown[]];
+  order?: [string, { ascending: boolean }];
+  limit?: number;
 };
 
 class FakeQuery {
@@ -74,12 +77,34 @@ class FakeQuery {
     return this;
   }
 
+  in(column: string, values: unknown[]) {
+    this.request.inFilter = [column, values];
+    return this;
+  }
+
+  order(column: string, options: { ascending: boolean }) {
+    this.request.order = [column, options];
+    return this;
+  }
+
+  async limit(value: number) {
+    this.request.limit = value;
+    return this.result;
+  }
+
   async single() {
     return this.result;
   }
 
   async maybeSingle() {
     return this.result;
+  }
+
+  then<TResult1 = QueryResult, TResult2 = never>(
+    onfulfilled?: ((value: QueryResult) => TResult1 | PromiseLike<TResult1>) | null,
+    onrejected?: ((reason: unknown) => TResult2 | PromiseLike<TResult2>) | null
+  ): Promise<TResult1 | TResult2> {
+    return Promise.resolve(this.result).then(onfulfilled, onrejected);
   }
 }
 
@@ -160,6 +185,42 @@ test("repository retrieves a persisted run by permanent public token", async () 
   assert.deepEqual(fake.requests[0]?.filter, ["public_token", PUBLIC_TOKEN]);
 });
 
+test("repository lists finalized runs newest first without loading transcripts", async () => {
+  const completedRow = {
+    ...queuedRow,
+    transcript: undefined,
+    status: "completed",
+    processing_started_at: TIMESTAMP,
+    completed_at: TIMESTAMP,
+  };
+  const failedRow = {
+    ...queuedRow,
+    transcript: undefined,
+    status: "failed",
+    processing_started_at: TIMESTAMP,
+    completed_at: TIMESTAMP,
+    error_code: "MODEL_ERROR",
+    error_message: "The model could not complete the evaluation.",
+  };
+  const { fake, repository } = repositoryWith([
+    { data: [completedRow, failedRow], error: null },
+  ]);
+
+  const history = await repository.listFinalized(50);
+
+  assert.equal(history.length, 2);
+  assert.equal(history[0]?.publicToken, PUBLIC_TOKEN);
+  assert.equal(history[0]?.evaluation.status, "completed");
+  assert.equal(history[1]?.evaluation.status, "failed");
+  assert.deepEqual(fake.requests[0], {
+    table: "evaluation_runs",
+    action: "select",
+    inFilter: ["status", ["completed", "failed"]],
+    order: ["created_at", { ascending: false }],
+    limit: 50,
+  });
+});
+
 test("repository returns null when an evaluation run is not found", async () => {
   const { repository } = repositoryWith([{ data: null, error: null }]);
   assert.equal(await repository.getById(RUN_ID), null);
@@ -195,6 +256,30 @@ test("repository atomically claims the next queued run through the server RPC", 
   assert.equal(claimed?.status, "processing");
   assert.deepEqual(fake.requests[0], {
     table: "claim_next_evaluation_run",
+    action: "rpc",
+    values: undefined,
+  });
+});
+
+test("repository fails abandoned processing runs through the server RPC", async () => {
+  const failedRow = {
+    ...queuedRow,
+    status: "failed",
+    processing_started_at: TIMESTAMP,
+    completed_at: TIMESTAMP,
+    error_code: "PROCESSING_TIMEOUT",
+    error_message: "The evaluation worker stopped before this run could finish.",
+    error_details: { timeoutSeconds: 360, retryable: true },
+  };
+  const { fake, repository } = repositoryWith([
+    { data: [failedRow], error: null },
+  ]);
+
+  const failed = await repository.failStaleProcessing();
+
+  assert.equal(failed[0]?.status, "failed");
+  assert.deepEqual(fake.requests[0], {
+    table: "fail_stale_evaluation_runs",
     action: "rpc",
     values: undefined,
   });

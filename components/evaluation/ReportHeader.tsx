@@ -6,21 +6,39 @@ import { EvaluationPublicResponse } from "@/lib/types/evaluation";
 import { formatCallType, formatDate } from "@/lib/utils/formatters";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { ActionButton } from "@/components/ui/ActionButton";
-import { Share2, Download, Check, Calendar, Hash, PlusCircle } from "lucide-react";
+import {
+  Share2,
+  Download,
+  Check,
+  Calendar,
+  Hash,
+  PlusCircle,
+  ExternalLink,
+} from "lucide-react";
 
 interface ReportHeaderProps {
   evaluation: EvaluationPublicResponse;
   onDownloadPdf?: () => void;
+  reportUrl?: string;
+  embedded?: boolean;
 }
 
-export function ReportHeader({ evaluation, onDownloadPdf }: ReportHeaderProps) {
+export function ReportHeader({
+  evaluation,
+  onDownloadPdf,
+  reportUrl,
+  embedded = false,
+}: ReportHeaderProps) {
   const [copied, setCopied] = useState(false);
   const [showToast, setShowToast] = useState(false);
 
   const handleShare = async () => {
     try {
       if (typeof window !== "undefined" && navigator.clipboard) {
-        await navigator.clipboard.writeText(window.location.href);
+        const shareUrl = reportUrl
+          ? new URL(reportUrl, window.location.origin).toString()
+          : window.location.href;
+        await navigator.clipboard.writeText(shareUrl);
         setCopied(true);
         setShowToast(true);
         setTimeout(() => {
@@ -46,6 +64,7 @@ export function ReportHeader({ evaluation, onDownloadPdf }: ReportHeaderProps) {
   };
 
   const isCompleted = evaluation.status === "completed";
+  const Heading = embedded ? "h2" : "h1";
 
   return (
     <header className="mb-6 pb-6 border-b border-zinc-200/80 relative">
@@ -82,10 +101,10 @@ export function ReportHeader({ evaluation, onDownloadPdf }: ReportHeaderProps) {
             </span>
           </div>
 
-          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-zinc-900">
+          <Heading className="text-2xl sm:text-3xl font-bold tracking-tight text-zinc-900">
             {formatCallType(evaluation.callType)} Evaluation
             {isCompleted ? " Report" : ""}
-          </h1>
+          </Heading>
 
           <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-zinc-500 mt-2">
             <span className="flex items-center gap-1.5 font-mono">
@@ -140,19 +159,31 @@ export function ReportHeader({ evaluation, onDownloadPdf }: ReportHeaderProps) {
                 {copied ? "Report Link Copied" : "Share Report"}
               </ActionButton>
 
-              <ActionButton
-                variant="primary"
-                size="sm"
-                onClick={handleDownload}
-                leftIcon={<Download className="w-3.5 h-3.5" />}
-              >
-                Download PDF
-              </ActionButton>
+              {embedded && reportUrl ? (
+                <Link
+                  href={reportUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-zinc-900 px-3 py-1.5 text-xs font-medium text-white shadow-xs transition-colors hover:bg-zinc-800 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-zinc-900 focus-visible:ring-offset-2"
+                >
+                  <ExternalLink className="w-3.5 h-3.5" aria-hidden="true" />
+                  Open report
+                </Link>
+              ) : (
+                <ActionButton
+                  variant="primary"
+                  size="sm"
+                  onClick={handleDownload}
+                  leftIcon={<Download className="w-3.5 h-3.5" />}
+                >
+                  Download PDF
+                </ActionButton>
+              )}
             </>
           )}
 
           {/* Universal "New Evaluation" action */}
-          <Link href="/">
+          {!embedded && <Link href="/">
             <ActionButton
               variant={isCompleted ? "secondary" : "primary"}
               size="sm"
@@ -160,7 +191,7 @@ export function ReportHeader({ evaluation, onDownloadPdf }: ReportHeaderProps) {
             >
               New Evaluation
             </ActionButton>
-          </Link>
+          </Link>}
         </div>
       </div>
     </header>

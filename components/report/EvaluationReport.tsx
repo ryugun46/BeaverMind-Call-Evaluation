@@ -15,11 +15,15 @@ import { ShieldCheck } from "lucide-react";
 interface EvaluationReportProps {
   evaluation: EvaluationPublicResponse;
   onDownloadPdf?: () => void;
+  reportUrl?: string;
+  embedded?: boolean;
 }
 
 export function EvaluationReport({
   evaluation,
   onDownloadPdf,
+  reportUrl,
+  embedded = false,
 }: EvaluationReportProps) {
   const [selectedDimension, setSelectedDimension] = useState<number | null>(null);
   const result = evaluation.result;
@@ -33,7 +37,12 @@ export function EvaluationReport({
   return (
     <article className="space-y-6 animate-fade-in pb-12">
       {/* 1. Report Header (Complete badge, Type, ID, Timestamps, Share/PDF/New actions) */}
-      <ReportHeader evaluation={evaluation} onDownloadPdf={onDownloadPdf} />
+      <ReportHeader
+        evaluation={evaluation}
+        onDownloadPdf={onDownloadPdf}
+        reportUrl={reportUrl}
+        embedded={embedded}
+      />
 
       {/* 1. Primary Score Presentation & Overview Card */}
       <ScoreSummaryCard evaluation={evaluation} />

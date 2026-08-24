@@ -32,6 +32,7 @@ function toEvaluationError(error: unknown): EvaluationError {
     return {
       code: "WORKER_CONFIGURATION_ERROR",
       message: "The evaluation worker is not configured correctly.",
+      details: { configurationIssue: error.message },
     };
   }
 
@@ -44,6 +45,9 @@ function toEvaluationError(error: unknown): EvaluationError {
         ...(error.responseCode === undefined
           ? {}
           : { providerCode: error.responseCode }),
+        ...(error.providerMessage === undefined
+          ? {}
+          : { providerMessage: error.providerMessage.slice(0, 500) }),
       },
     };
   }
@@ -85,25 +89,49 @@ export function createEvaluationProcessor(
   provider?: EvaluationProvider,
   providerFactory: EvaluationProviderFactory = createOpenRouterProvider
 ) {
+  async function persistTerminalUpdate(
+    id: string,
+    update: Extract<EvaluationLifecycleUpdate, { status: "completed" | "failed" }>
+  ): Promise<EvaluationRun> {
+    let lastError: unknown;
+    for (let attempt = 1; attempt <= 3; attempt += 1) {
+      try {
+        return await repository.updateLifecycle(id, update);
+      } catch (error) {
+        lastError = error;
+        console.error(`Evaluation ${id}: terminal persistence attempt ${attempt} failed`, {
+          status: update.status,
+          errorType: error instanceof Error ? error.name : "UnknownError",
+        });
+        if (attempt < 3) {
+          await new Promise((resolve) => setTimeout(resolve, attempt * 250));
+        }
+      }
+    }
+    throw lastError;
+  }
+
   return {
     async processNext(): Promise<EvaluationRun | null> {
       const claimed = await repository.claimNextQueued();
       if (!claimed) return null;
 
+      let result: EvaluationResult;
       try {
         const activeProvider = provider ?? providerFactory(claimed.modelName);
         const candidate = await activeProvider.evaluate(claimed);
-        const result: EvaluationResult = validateEvaluationResult(candidate, claimed);
-        return await repository.updateLifecycle(claimed.id, {
-          status: "completed",
-          result,
-        });
+        result = validateEvaluationResult(candidate, claimed);
       } catch (error) {
-        return repository.updateLifecycle(claimed.id, {
+        return persistTerminalUpdate(claimed.id, {
           status: "failed",
           error: toEvaluationError(error),
         });
       }
+
+      return persistTerminalUpdate(claimed.id, {
+        status: "completed",
+        result,
+      });
     },
   };
 }

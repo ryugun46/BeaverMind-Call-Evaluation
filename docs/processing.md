@@ -17,6 +17,8 @@ Evaluation processor
 
 Report page
   -> GET /api/evaluations/{public_token} every two seconds while active
+  -> server-side Supabase reads explicitly bypass the Next.js data cache
+  -> processing runs older than six minutes are failed as abandoned
   -> existing queued, processing, failed, or report component
 ```
 
@@ -27,6 +29,12 @@ Fluid Compute; the OpenRouter timeout remains below that ceiling. Queue claiming
 uses `FOR UPDATE SKIP LOCKED` and commits before the external model request,
 allowing concurrent submissions without holding database locks during AI
 processing.
+
+Every provider request logs its model, elapsed time, response status, request
+ID, and returned usage without logging the API key or transcript. Terminal
+database writes are retried three times. A report poll converts a processing
+run older than six minutes to `PROCESSING_TIMEOUT`; this is deliberately above
+the five-minute function ceiling so an active worker is not reaped.
 
 The standalone worker remains available for local development or deployment to
 a persistent process host.

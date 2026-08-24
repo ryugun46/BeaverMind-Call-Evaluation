@@ -3,12 +3,14 @@
 import React from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { PlusCircle, FileCheck2 } from "lucide-react";
+import { PlusCircle, FileCheck2, History } from "lucide-react";
 import { ActionButton } from "@/components/ui/ActionButton";
+import { cn } from "@/lib/utils/cn";
 
 export function Header() {
   const pathname = usePathname();
   const isEvaluationPage = pathname.startsWith("/evaluation/");
+  const isHistoryPage = pathname === "/history";
 
   return (
     <header className="sticky top-0 z-40 bg-white/90 backdrop-blur-md border-b border-zinc-200/80 transition-all no-print">
@@ -32,9 +34,22 @@ export function Header() {
           </div>
         </Link>
 
-        {/* Action button if viewing an evaluation */}
-        {isEvaluationPage && (
-          <div className="flex items-center gap-3">
+        <nav aria-label="Primary navigation" className="flex items-center gap-2">
+          <Link
+            href="/history"
+            aria-current={isHistoryPage ? "page" : undefined}
+            className={cn(
+              "inline-flex items-center justify-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition-colors focus:outline-hidden focus-visible:ring-2 focus-visible:ring-zinc-900 focus-visible:ring-offset-2",
+              isHistoryPage
+                ? "bg-zinc-900 text-white shadow-xs"
+                : "text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900"
+            )}
+          >
+            <History className="h-3.5 w-3.5" aria-hidden="true" />
+            <span className="hidden sm:inline">History</span>
+          </Link>
+
+          {(isEvaluationPage || isHistoryPage) && (
             <Link href="/">
               <ActionButton
                 variant="secondary"
@@ -44,8 +59,8 @@ export function Header() {
                 New Evaluation
               </ActionButton>
             </Link>
-          </div>
-        )}
+          )}
+        </nav>
       </div>
     </header>
   );

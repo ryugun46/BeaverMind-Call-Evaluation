@@ -2,7 +2,7 @@ begin;
 
 create extension if not exists pgtap with schema extensions;
 
-select plan(29);
+select plan(32);
 
 insert into public.evaluation_runs (call_type, rubric_version, transcript)
 values ('kickoff', 'kickoff-v1', 'Kick-off verification transcript.');
@@ -273,6 +273,43 @@ select ok(
   not has_table_privilege('anon', 'public.evaluation_runs', 'select')
     and not has_table_privilege('authenticated', 'public.evaluation_runs', 'select'),
   'anonymous and authenticated roles cannot select transcripts'
+);
+
+insert into public.evaluation_runs (call_type, rubric_version, transcript)
+values ('kickoff', 'kickoff-v1', 'Stale processing verification.');
+
+update public.evaluation_runs
+set status = 'processing'
+where transcript = 'Stale processing verification.';
+
+select is(
+  (select count(*)::integer
+   from public.fail_stale_evaluation_runs(interval '0 seconds')),
+  2,
+  'stale recovery terminates every abandoned processing run'
+);
+
+select ok(
+  (select status = 'failed'
+      and error_code = 'PROCESSING_TIMEOUT'
+      and completed_at is not null
+   from public.evaluation_runs
+   where transcript = 'Stale processing verification.'),
+  'stale recovery records a structured terminal timeout'
+);
+
+select ok(
+  not has_function_privilege(
+    'anon',
+    'public.fail_stale_evaluation_runs(interval)',
+    'execute'
+  )
+    and not has_function_privilege(
+      'authenticated',
+      'public.fail_stale_evaluation_runs(interval)',
+      'execute'
+    ),
+  'browser roles cannot recover stale evaluation runs'
 );
 
 select * from finish();

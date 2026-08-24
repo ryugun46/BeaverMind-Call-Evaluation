@@ -5,11 +5,13 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { z } from "zod";
 
 import {
+  CallTypeSchema,
   CreateEvaluationInputSchema,
   EvaluationErrorSchema,
   EvaluationResultSchema,
   EvaluationRunSchema,
   type CreateEvaluationInput,
+  type EvaluationError,
   type EvaluationRun,
 } from "@/lib/contracts/evaluation";
 import { OpenRouterModelSlugSchema } from "@/lib/evaluation-models";
@@ -17,6 +19,7 @@ import { getRubricForCallType } from "@/lib/rubrics";
 import { getServerSupabaseClient } from "@/lib/server/supabase";
 
 export const MAX_TRANSCRIPT_BYTES = 5 * 1024 * 1024;
+export const STALE_PROCESSING_TIMEOUT_MS = 6 * 60 * 1000;
 
 const UUIDSchema = z.string().uuid();
 
@@ -67,6 +70,69 @@ const RUN_COLUMNS = [
   "created_at",
   "updated_at",
 ].join(",");
+
+const HISTORY_COLUMNS = [
+  "id",
+  "public_token",
+  "call_type",
+  "status",
+  "rubric_version",
+  "error_code",
+  "error_message",
+  "error_details",
+  "processing_started_at",
+  "completed_at",
+  "created_at",
+  "updated_at",
+].join(",");
+
+const HistoryLimitSchema = z.number().int().min(1).max(200);
+
+const EvaluationHistorySummarySchema = z
+  .object({
+    id: UUIDSchema,
+    callType: CallTypeSchema,
+    rubricVersion: z.string().min(1),
+    status: z.enum(["completed", "failed"]),
+    createdAt: z.string().datetime({ offset: true }),
+    updatedAt: z.string().datetime({ offset: true }),
+    processingStartedAt: z.string().datetime({ offset: true }),
+    completedAt: z.string().datetime({ offset: true }),
+    error: EvaluationErrorSchema.nullable(),
+  })
+  .superRefine((summary, ctx) => {
+    if (summary.status === "completed" && summary.error !== null) {
+      ctx.addIssue({
+        code: "custom",
+        message: "Completed history item cannot have an error",
+        path: ["error"],
+      });
+    }
+    if (summary.status === "failed" && summary.error === null) {
+      ctx.addIssue({
+        code: "custom",
+        message: "Failed history item requires an error",
+        path: ["error"],
+      });
+    }
+  });
+
+export interface EvaluationHistorySummary {
+  id: string;
+  callType: z.infer<typeof CallTypeSchema>;
+  rubricVersion: string;
+  status: "completed" | "failed";
+  createdAt: string;
+  updatedAt: string;
+  processingStartedAt: string;
+  completedAt: string;
+  error: EvaluationError | null;
+}
+
+export interface EvaluationHistoryItem {
+  publicToken: string;
+  evaluation: EvaluationHistorySummary;
+}
 
 export class TranscriptTooLargeError extends RangeError {
   constructor(actualBytes: number) {
@@ -128,6 +194,35 @@ function mapEvaluationRun(value: unknown): PersistedEvaluationRun {
   });
 }
 
+function mapEvaluationHistoryItem(value: unknown): EvaluationHistoryItem {
+  const row = asRow(value);
+  const error =
+    row.error_code === null || row.error_code === undefined
+      ? null
+      : EvaluationErrorSchema.parse({
+          code: row.error_code,
+          message: row.error_message,
+          ...(row.error_details === null || row.error_details === undefined
+            ? {}
+            : { details: row.error_details }),
+        });
+
+  return {
+    publicToken: UUIDSchema.parse(row.public_token),
+    evaluation: EvaluationHistorySummarySchema.parse({
+      id: row.id,
+      callType: row.call_type,
+      rubricVersion: row.rubric_version,
+      status: row.status,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
+      processingStartedAt: row.processing_started_at,
+      completedAt: row.completed_at,
+      error,
+    }),
+  };
+}
+
 function throwIfDatabaseError(operation: string, error: unknown): void {
   if (error) throw new EvaluationRunRepositoryError(operation, error);
 }
@@ -186,6 +281,25 @@ export function createEvaluationRunsRepository(client: SupabaseClient) {
       return data === null ? null : mapEvaluationRun(data);
     },
 
+    async listFinalized(limit = 100): Promise<EvaluationHistoryItem[]> {
+      const parsedLimit = HistoryLimitSchema.parse(limit);
+      const { data, error } = await client
+        .from("evaluation_runs")
+        .select(HISTORY_COLUMNS)
+        .in("status", ["completed", "failed"])
+        .order("created_at", { ascending: false })
+        .limit(parsedLimit);
+
+      throwIfDatabaseError("list finalized evaluation runs", error);
+      if (!Array.isArray(data)) {
+        throw new EvaluationRunRepositoryError(
+          "list finalized evaluation runs",
+          new TypeError("Database returned an invalid row collection")
+        );
+      }
+      return data.map(mapEvaluationHistoryItem);
+    },
+
     async claimNextQueued(): Promise<PersistedEvaluationRun | null> {
       const { data, error } = await client
         .rpc("claim_next_evaluation_run")
@@ -193,6 +307,15 @@ export function createEvaluationRunsRepository(client: SupabaseClient) {
 
       throwIfDatabaseError("claim next queued evaluation run", error);
       return data === null ? null : mapEvaluationRun(data);
+    },
+
+    async failStaleProcessing(): Promise<PersistedEvaluationRun[]> {
+      const { data, error } = await client.rpc("fail_stale_evaluation_runs");
+
+      throwIfDatabaseError("fail stale evaluation runs", error);
+      return z.array(PersistedEvaluationRunSchema).parse(
+        (data ?? []).map(mapEvaluationRun)
+      );
     },
 
     async updateLifecycle(
@@ -242,6 +365,14 @@ export function getEvaluationRunByPublicToken(
   );
 }
 
+export function listFinalizedEvaluationRuns(
+  limit = 100
+): Promise<EvaluationHistoryItem[]> {
+  return createEvaluationRunsRepository(
+    getServerSupabaseClient()
+  ).listFinalized(limit);
+}
+
 export function updateEvaluationRunLifecycle(
   id: string,
   update: EvaluationLifecycleUpdate
@@ -256,4 +387,10 @@ export function claimNextQueuedEvaluationRun(): Promise<PersistedEvaluationRun |
   return createEvaluationRunsRepository(
     getServerSupabaseClient()
   ).claimNextQueued();
+}
+
+export function failStaleEvaluationRuns(): Promise<PersistedEvaluationRun[]> {
+  return createEvaluationRunsRepository(
+    getServerSupabaseClient()
+  ).failStaleProcessing();
 }

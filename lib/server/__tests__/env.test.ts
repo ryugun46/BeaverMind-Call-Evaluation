@@ -78,6 +78,7 @@ test("server client and environment modules are explicitly server-only", async (
   for (const source of sources) {
     assert.match(source, /^import "server-only";/);
   }
+  assert.match(sources[1]!, /cache:\s*["']no-store["']/);
   assert.doesNotMatch(sources.join("\n"), /process\.env\.NEXT_PUBLIC_/);
 });
 

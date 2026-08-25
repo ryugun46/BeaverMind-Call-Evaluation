@@ -7,7 +7,36 @@ import { getPublicEvaluationById } from "@/lib/fixtures/evaluation-fixtures";
 import {
   buildEvaluationPdfFilename,
   createEvaluationReportPdf,
+  resolveEvidenceAttribution,
+  resolveEvidenceSpeakerName,
 } from "@/lib/server/pdf/evaluation-report-pdf";
+
+test("uses identified participant names for evidence role labels", () => {
+  const participants = { coachName: "Sarah Chen", clientName: "David Miller" };
+
+  assert.equal(resolveEvidenceSpeakerName("Coach (Sarah)", participants), "Sarah Chen");
+  assert.equal(resolveEvidenceSpeakerName("Client", participants), "David Miller");
+  assert.equal(resolveEvidenceSpeakerName("Sarah", participants), "Sarah Chen");
+  assert.equal(resolveEvidenceSpeakerName("Unknown", participants), "Unknown");
+});
+
+test("repairs legacy Unknown evidence from timestamped transcript headers", () => {
+  const transcript = [
+    "00:00 - Sarah Chen",
+    "I reviewed your intake.",
+    "David Miller (00:05)",
+    "Thank you for preparing.",
+  ].join("\n");
+
+  assert.deepEqual(
+    resolveEvidenceAttribution(
+      { speaker: "Unknown", quote: "Thank you for preparing.", turnIndex: 0 },
+      { coachName: "Sarah Chen", clientName: "David Miller" },
+      transcript
+    ),
+    { speaker: "David Miller", timestamp: "00:05", turnIndex: 1 }
+  );
+});
 
 test("creates a compact, multi-page PDF for a completed evaluation", async () => {
   const evaluation = getPublicEvaluationById("kickoff-elite");

@@ -88,6 +88,8 @@ test("evaluation environment validates OpenRouter worker configuration", () => {
   });
 
   assert.equal(environment.OPENROUTER_TIMEOUT_MS, 180_000);
+  assert.equal(environment.OPENROUTER_REQUEST_RETRIES, 2);
+  assert.equal(environment.EVALUATION_PIPELINE_TIMEOUT_MS, 270_000);
   assert.equal(environment.EVALUATION_WORKER_POLL_MS, 2_000);
   assert.throws(
     () => getOpenRouterEnvironment({ OPENROUTER_API_KEY: "" }),

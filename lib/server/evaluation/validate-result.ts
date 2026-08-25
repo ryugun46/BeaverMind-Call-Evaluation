@@ -67,21 +67,6 @@ function passesDeterministicGuard(
   return true;
 }
 
-function canonicalRangeScore(
-  definition: DimensionDefinition,
-  minScore: number,
-  maxScore: number
-): number {
-  if (definition.scoring.mode !== "banded") return minScore;
-  const increment = definition.scoring.increment;
-  const midpointInIncrements = (minScore + maxScore) / 2 / increment;
-  // Round midpoint ties downward for a stable, conservative band score.
-  const roundedIncrements = Math.floor(midpointInIncrements + 0.5 - 1e-9);
-  return Number(
-    Math.min(maxScore, Math.max(minScore, roundedIncrements * increment)).toFixed(2)
-  );
-}
-
 export function validateEvaluationResult(
   value: unknown,
   run: Pick<EvaluationRun, "callType" | "transcript" | "rubricVersion">
@@ -139,33 +124,6 @@ export function validateEvaluationResult(
   });
   result.appliedRules = normalizedAppliedRules;
 
-  // Range-valued Kick-off bands otherwise let equally calibrated models pick
-  // different point values inside the same band. Preserve the model's band
-  // judgment, but standardize its exact points to the authored range midpoint.
-  result.dimensions.forEach((dimension, index) => {
-    if (dimension.disabled || dimension.score === null) return;
-    const definition = rubric.dimensions[index];
-    if (!definition) return;
-    const selectedBand = findScoreBand(definition, dimension.score);
-    if (
-      !selectedBand ||
-      selectedBand.scoreKind !== "range" ||
-      dimension.band !== selectedBand.label
-    ) {
-      return;
-    }
-
-    const canonicalScore = canonicalRangeScore(
-      definition,
-      selectedBand.minScore,
-      selectedBand.maxScore
-    );
-    if (dimension.score !== canonicalScore) {
-      dimension.reasoning = `${dimension.reasoning} The ${selectedBand.label} range was standardized to ${canonicalScore}/${definition.maxScore}.`;
-      dimension.score = canonicalScore;
-    }
-  });
-
   // The model decides whether a rule condition occurred; once it records a
   // valid rule ID, the rule's numeric effect is deterministic and server-owned.
   appliedRuleIds.forEach((ruleId) => {
@@ -214,6 +172,14 @@ export function validateEvaluationResult(
         issues.push(`dimensions.${index} requires its applicability rule in appliedRules`);
       }
     } else {
+      const incorrectlyActiveRule = (definition.applicabilityRules ?? []).find(
+        (rule) => appliedRuleIds.has(rule.id)
+      );
+      if (incorrectlyActiveRule) {
+        issues.push(
+          `dimensions.${index} must be disabled because ${incorrectlyActiveRule.id} was applied`
+        );
+      }
       activeMaximum += definition.maxScore;
       const score = dimension.score;
       if (score !== null) {
@@ -250,7 +216,12 @@ export function validateEvaluationResult(
         );
       } else {
         evidence.quote = locatedQuote.quote;
-        evidence.speaker = locatedQuote.speaker;
+        const sourceTurn = parsedTranscript.turns[locatedQuote.turnIndex];
+        // A parsed source label is authoritative. For wholly unlabelled text,
+        // retain the evaluator's role/name instead of degrading it to Unknown.
+        if (sourceTurn?.labelled || /^unknown$/i.test(evidence.speaker.trim())) {
+          evidence.speaker = locatedQuote.speaker;
+        }
         evidence.turnIndex = locatedQuote.turnIndex;
         if (locatedQuote.timestamp) evidence.timestamp = locatedQuote.timestamp;
         else delete evidence.timestamp;

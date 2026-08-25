@@ -12,9 +12,12 @@ Browser POST /api/evaluations
 Evaluation processor
   -> atomic claim_next_evaluation_run() (processing)
   -> parse labelled turns + deterministic speaker metrics
-  -> short call: one structured scoring request
-  -> large call: overlapping turn chunks -> rubric evidence maps -> compact dossier
-  -> independent rubric-dimension scoring request
+  -> short call: full transcript retained as scoring evidence
+  -> large call: overlapping turn chunks -> mandatory 12-dimension/rule audits
+  -> independent global rule audit
+  -> 12 independent dimension-scoring requests (bounded concurrency)
+  -> report narrative synthesis from authoritative dimension results
+  -> deterministic narrative fallback if narrative-only generation fails
   -> Zod + rubric + evidence validation
   -> evaluation_runs (completed or failed)
 
@@ -28,13 +31,20 @@ Report page
 On Vercel, the POST handler schedules one processor cycle with `waitUntil`, so
 the response returns immediately while processing continues within the Vercel
 Function lifetime. The route uses a five-minute maximum duration for Hobby-plan
-Fluid Compute; the OpenRouter timeout remains below that ceiling. Queue claiming
+Fluid Compute. A 270-second pipeline deadline leaves time for terminal status
+persistence before that ceiling; every individual OpenRouter timeout and retry
+is clipped to the remaining budget. Queue claiming
 uses `FOR UPDATE SKIP LOCKED` and commits before the external model request,
 allowing concurrent submissions without holding database locks during AI
 processing.
 
-Every provider request logs its model, elapsed time, response status, request
-ID, and returned usage without logging the API key or transcript. Terminal
+Transient network failures and HTTP 408/425/429/5xx responses receive bounded
+exponential retries; `Retry-After` is honored when it can safely fit within the
+pipeline deadline. Every provider request logs its model, stage, attempt,
+elapsed time, request ID, and returned usage without logging the API key or
+transcript. A final per-evaluation summary aggregates attempts, successful
+requests, retries, prompt/completion/total tokens, provider-reported cost, and
+wall time. Terminal
 database writes are retried three times. A report poll converts a processing
 run older than six minutes to `PROCESSING_TIMEOUT`; this is deliberately above
 the five-minute function ceiling so an active worker is not reaped.
@@ -44,29 +54,44 @@ a persistent process host.
 
 ## Large-transcript quality path
 
-Transcripts under `EVALUATION_LARGE_TRANSCRIPT_WORDS` keep the direct one-call
-path. Larger transcripts are split on speaker turns, with a small turn overlap
+Transcripts that fit in one configured chunk retain the complete transcript in
+each independent dimension scorer. Larger transcripts are split on speaker turns, with a small turn overlap
 and preference for explicit topic transitions near a boundary. Oversized single
 turns are safely split without losing their source offsets.
 
-Each chunk is independently searched against all 12 dimensions, applicability
-conditions, and automatic rules. The resulting compact dossier contains every
-chunk summary for coverage and a deduplicated chronological evidence catalog.
+Each chunk is independently searched against the complete scoring bands and
+notes for all 12 dimensions, every applicability condition, and every automatic
+rule. A map is rejected unless it returns exactly 12 ordered dimension audits
+and one ordered audit for every rule. Evidence findings must include a tagged
+exact quote. Malformed stage results receive one targeted correction request.
+The resulting compact dossier contains every chunk summary for coverage and a
+deduplicated chronological evidence catalog.
 Only exact quotes reconciled to the original transcript survive into the
-dossier. The final evaluator receives the rubric once, audits every criterion
-independently, and may cite only catalog quotes. Repairs reuse the cached dossier
-instead of repeating map calls.
+dossier. A separate global pass decides rules. Each rubric dimension is then
+scored in its own request using only that dimension's complete authored rubric,
+per-chunk audits, rule decisions, and reconciled evidence. Every dimension
+scorer must assess all authored bands in order, and its selected band must equal
+the highest fully supported assessment. Report prose is
+generated only after these scores are fixed. Repairs reuse cached chunk audits.
+Narrative synthesis receives one targeted correction request. If narrative-only
+generation still fails, deterministic conservative prose is derived from the
+already validated dimensions and applied rules, so authoritative scores are not
+discarded or regenerated.
 
-Server validation remains authoritative: it recalculates scores and caps,
-rejects fabricated evidence, and derives the source speaker, turn index, and
-timestamp for every accepted quote. When labels cover less than 80% of parsed
+Server validation owns arithmetic and rule effects: it recalculates scores and
+caps, rejects fabricated evidence, enforces authored score buckets, requires
+applied N/A rules to disable their dimensions, and derives the source speaker,
+turn index, and timestamp for every accepted quote. Range-valued Kick-off bands
+retain valid authored increments, so the rubric's full 100 points are attainable.
+When labels cover less than 80% of parsed
 words or fewer than two labelled speakers are present, the dossier explicitly
 marks speaker attribution as low confidence.
 
-The chunk threshold, chunk size, overlap, and bounded map concurrency are
-configurable in `.env.example`. Defaults favor evidence recall; the direct path
-avoids extra requests on transcripts small enough to score without context
-dilution.
+The chunk threshold, chunk size, overlap, map concurrency, dimension
+concurrency, request retry count, and whole-pipeline timeout are configurable in
+`.env.example`. Defaults favor evidence recall while staying below the current
+five-minute web-function ceiling; the direct path avoids lossy compression on
+transcripts small enough to fit in one chunk.
 
 ## Configuration
 
@@ -84,6 +109,8 @@ so changing request JSON cannot select an unreviewed or unexpectedly expensive
 model. The selected OpenRouter slug is persisted on `evaluation_runs` before
 the job is queued; the processor constructs its provider from that run after an
 atomic claim. Concurrent runs can therefore use different models safely.
+GPT-5.6 Sol is the default because scoring quality is prioritized over baseline
+cost.
 
 The current choices are GPT-4.1 Mini and GPT-5.6 Luna/Terra/Sol. They were
 verified against OpenRouter's model catalog for strict structured-output support

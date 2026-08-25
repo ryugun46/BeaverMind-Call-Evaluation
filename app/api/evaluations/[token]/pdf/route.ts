@@ -41,7 +41,9 @@ export async function GET(
     const { buildEvaluationPdfFilename, createEvaluationReportPdf } = await import(
       "@/lib/server/pdf/evaluation-report-pdf"
     );
-    const bytes = await createEvaluationReportPdf(evaluation);
+    const bytes = await createEvaluationReportPdf(evaluation, {
+      transcript: persistedRun?.transcript,
+    });
     const filename = buildEvaluationPdfFilename(evaluation);
 
     return new NextResponse(Buffer.from(bytes), {

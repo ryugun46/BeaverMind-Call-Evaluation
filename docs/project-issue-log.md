@@ -4,6 +4,31 @@ This document records production issues encountered while building and deploying
 the evaluation system. Keep it updated with symptoms, confirmed causes, fixes,
 and verification status so the project can be reviewed retrospectively.
 
+## 2026-08-25 — Scoring reliability audit
+
+- **Symptom:** Scores felt inconsistent despite large transcripts being split
+  into chunks.
+- **Confirmed causes:** Chunking activated too late, chunk maps could omit every
+  rubric target, retrieval omitted authored band criteria, one model response
+  scored all 12 dimensions, semantic rule decisions were weakly isolated, and
+  Kick-off range scores were forcibly reduced to their midpoint. That midpoint
+  rule made the practical Kick-off maximum 96.5 despite a 100-point rubric.
+- **Fix:** Calls that exceed one configured chunk now receive mandatory ordered
+  audits for all 12 dimensions and every rule. Rules are decided separately;
+  every dimension is scored in its own bounded-concurrency request; exact
+  evidence and rubric identity are reconciled; arithmetic and rule effects
+  remain server-owned; incomplete stages receive one targeted retry; and valid
+  authored range increments are preserved. GPT-5.6 Sol is now the quality-first
+  default.
+- **Verification:** The suite includes attainable-100, mandatory chunk coverage,
+  independent 12-request scoring, exact evidence, score-bucket, and N/A
+  consistency checks. Failure-injection checks also prove recovery from a
+  transient 429 and preservation of validated scores when both narrative
+  attempts fail. The provider now records aggregate latency, retry, token, and
+  cost measurements needed for production sustainability monitoring.
+- **Status:** Fixed locally; requires deployment and calibration against a
+  representative set of human-scored production transcripts.
+
 ## 2026-08-25 — Evaluation lifecycle and OpenRouter integration
 
 ### 1. Evaluation remained in `processing`

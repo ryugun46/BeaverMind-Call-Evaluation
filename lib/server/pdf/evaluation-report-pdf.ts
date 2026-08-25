@@ -8,7 +8,15 @@ import {
   rgb,
 } from "pdf-lib";
 
-import type { EvaluationPublicResponse } from "@/lib/contracts/evaluation";
+import type {
+  EvaluationPublicResponse,
+  EvidenceItem,
+} from "@/lib/contracts/evaluation";
+import {
+  locateTranscriptQuote,
+  parseTranscript,
+  type ParsedTranscript,
+} from "@/lib/server/evaluation/transcript-structure";
 
 const PAGE_WIDTH = 595.28;
 const PAGE_HEIGHT = 841.89;
@@ -103,6 +111,79 @@ function formatDate(value: string | null): string {
 
 function displayBand(value: string | null): string {
   return value ? value.replaceAll("_", " ") : "N/A";
+}
+
+function normalizedParticipantLabel(value: string): string {
+  return value
+    .toLocaleLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
+export function resolveEvidenceSpeakerName(
+  speaker: string,
+  participants: { clientName?: string | null; coachName?: string | null }
+): string {
+  const label = normalizedParticipantLabel(speaker);
+  const coachName = participants.coachName?.trim();
+  const clientName = participants.clientName?.trim();
+
+  if (/\b(?:coach|rep|advisor|consultant)\b/.test(label) && coachName) {
+    return coachName;
+  }
+  if (/\b(?:client|customer|member)\b/.test(label) && clientName) {
+    return clientName;
+  }
+
+  const matchesName = (name: string | undefined) => {
+    if (!name || !label) return false;
+    const normalizedName = normalizedParticipantLabel(name);
+    return (
+      label === normalizedName ||
+      normalizedName.startsWith(`${label} `) ||
+      label.startsWith(`${normalizedName} `)
+    );
+  };
+  const matchesCoach = matchesName(coachName);
+  const matchesClient = matchesName(clientName);
+  if (matchesCoach !== matchesClient) {
+    return matchesCoach ? coachName! : clientName!;
+  }
+
+  return speaker;
+}
+
+export function resolveEvidenceAttribution(
+  evidence: EvidenceItem,
+  participants: { clientName?: string | null; coachName?: string | null },
+  transcript?: string,
+  parsedTranscript: ParsedTranscript | undefined = transcript
+    ? parseTranscript(transcript)
+    : undefined
+) {
+  let speaker = evidence.speaker;
+  let turnIndex = evidence.turnIndex;
+  let timestamp = evidence.timestamp;
+
+  if (/^unknown$/i.test(speaker.trim()) && transcript && parsedTranscript) {
+    const located = locateTranscriptQuote(
+      transcript,
+      evidence.quote,
+      undefined,
+      parsedTranscript
+    );
+    if (located && !/^unknown$/i.test(located.speaker.trim())) {
+      speaker = located.speaker;
+      turnIndex = located.turnIndex;
+      timestamp = located.timestamp;
+    }
+  }
+
+  return {
+    speaker: resolveEvidenceSpeakerName(speaker, participants),
+    turnIndex,
+    timestamp,
+  };
 }
 
 function bandColor(value: string): TextColor {
@@ -335,7 +416,8 @@ export function buildEvaluationPdfFilename(evaluation: EvaluationPublicResponse)
 }
 
 export async function createEvaluationReportPdf(
-  evaluation: EvaluationPublicResponse
+  evaluation: EvaluationPublicResponse,
+  options: { transcript?: string } = {}
 ): Promise<Uint8Array> {
   if (evaluation.status !== "completed" || !evaluation.result) {
     throw new Error("A completed evaluation result is required to create a PDF");
@@ -346,6 +428,9 @@ export async function createEvaluationReportPdf(
   const bold = await document.embedFont(StandardFonts.HelveticaBold);
   const composer = new ReportComposer(document, regular, bold);
   const { result } = evaluation;
+  const parsedTranscript = options.transcript
+    ? parseTranscript(options.transcript)
+    : undefined;
   const title = evaluation.reportName ?? `${formatCallType(evaluation.callType)} Evaluation Report`;
 
   document.setTitle(printableText(title));
@@ -442,12 +527,18 @@ export async function createEvaluationReportPdf(
         composer.text("No qualifying transcript evidence was found.", { color: COLORS.muted });
       } else {
         for (const evidence of dimension.evidence) {
-          const evidenceLocation = evidence.timestamp
-            ? ` [${evidence.timestamp}]`
-            : evidence.turnIndex !== undefined
-              ? ` [Turn ${evidence.turnIndex + 1}]`
+          const attribution = resolveEvidenceAttribution(
+            evidence,
+            { clientName, coachName },
+            options.transcript,
+            parsedTranscript
+          );
+          const evidenceLocation = attribution.timestamp
+            ? ` [${attribution.timestamp}]`
+            : attribution.turnIndex !== undefined
+              ? ` [Turn ${attribution.turnIndex + 1}]`
               : "";
-          composer.text(`${evidence.speaker}${evidenceLocation}: "${evidence.quote}"`, {
+          composer.text(`${attribution.speaker}${evidenceLocation}: "${evidence.quote}"`, {
             size: 9,
             lineHeight: 13,
             color: COLORS.muted,

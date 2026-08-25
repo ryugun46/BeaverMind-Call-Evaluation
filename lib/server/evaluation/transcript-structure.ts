@@ -46,6 +46,13 @@ const SPEAKER_LINE = new RegExp(
     `(?:\\s*(?:\\[|\\()(?<suffixTimestamp>${TIMESTAMP})(?:\\]|\\)))?\\s*:\\s*` +
     `(?:(?:\\[|\\()(?<contentTimestamp>${TIMESTAMP})(?:\\]|\\))\\s*)?(?<text>.*)$`,
 );
+const SPEAKER_HEADER_NAME = "[A-Za-z\\u00c0-\\u017e][A-Za-z\\u00c0-\\u017e0-9 _().'\\u2019\\-]{0,79}?";
+const TIMESTAMP_FIRST_SPEAKER_HEADER = new RegExp(
+  `^\\s*(?:(?:\\[|\\()(?<bracketedTimestamp>${TIMESTAMP})(?:\\]|\\))\\s*(?:[-–—|]\\s*)?|(?<separatedTimestamp>${TIMESTAMP})\\s*[-–—|]\\s*)(?<speaker>${SPEAKER_HEADER_NAME})\\s*$`
+);
+const SPEAKER_FIRST_TIMESTAMP_HEADER = new RegExp(
+  `^\\s*(?<speaker>${SPEAKER_HEADER_NAME})\\s*(?:(?:[-–—|]\\s*)(?:\\[|\\()?(?<separatedTimestamp>${TIMESTAMP})(?:\\]|\\))?|(?:\\[|\\()(?<bracketedTimestamp>${TIMESTAMP})(?:\\]|\\)))\\s*$`
+);
 const TOPIC_SHIFT = /^(?:next|now|moving on|let(?:'|’)s (?:move|talk|review|discuss)|before we (?:finish|wrap|close)|to recap|in summary)\b/i;
 
 export function countTranscriptWords(value: string): number {
@@ -91,6 +98,23 @@ export function parseTranscript(transcript: string): ParsedTranscript {
   };
 
   for (const line of lineRecords(transcript)) {
+    const headerMatch =
+      TIMESTAMP_FIRST_SPEAKER_HEADER.exec(line.text) ??
+      SPEAKER_FIRST_TIMESTAMP_HEADER.exec(line.text);
+    if (headerMatch?.groups) {
+      finish(line.start);
+      active = {
+        speaker: headerMatch.groups.speaker!.trim(),
+        timestamp:
+          headerMatch.groups.bracketedTimestamp ??
+          headerMatch.groups.separatedTimestamp,
+        textStart: line.end,
+        sourceStart: line.start,
+        labelled: true,
+      };
+      continue;
+    }
+
     const match = SPEAKER_LINE.exec(line.text);
     if (!match?.groups) {
       if (!active && line.text.trim()) {

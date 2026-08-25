@@ -6,10 +6,12 @@ import {
   EvaluationRunSchema,
 } from "@/lib/contracts/evaluation";
 import { getEvaluationById } from "@/lib/fixtures/evaluation-fixtures";
+import { getRubricForCallType } from "@/lib/rubrics";
 import {
   EvaluationEnvironmentError,
   getOpenRouterEnvironment,
 } from "@/lib/server/evaluation/environment";
+import { validateEvidenceMapCoverage } from "@/lib/server/evaluation/evidence-map";
 import {
   createOpenRouterProvider,
   normalizeProviderResult,
@@ -55,12 +57,137 @@ const processingRun = PersistedEvaluationRunSchema.parse({
   error: null,
 });
 
+function orderedRubricRuleIds(callType: "kickoff" | "coaching") {
+  const rubric = getRubricForCallType(callType);
+  return [
+    ...rubric.dimensions.flatMap((dimension) =>
+      (dimension.applicabilityRules ?? []).map((rule) => rule.id)
+    ),
+    ...rubric.automaticRules.map((rule) => rule.id),
+  ];
+}
+
+function mockEvidenceMap(callType: "kickoff" | "coaching") {
+  return {
+    chunkSummary: "This source interval was reviewed against every target.",
+    speakerRoles: [
+      { label: "Coach", role: "coach", personalName: null },
+      { label: "Client", role: "client", personalName: null },
+    ],
+    moments: [],
+    dimensionAudits: Array.from({ length: 12 }, (_, index) => ({
+      dimensionNumber: index + 1,
+      finding: "no_relevant_evidence",
+      summary: `Dimension ${index + 1} was explicitly checked in this chunk.`,
+    })),
+    ruleAudits: orderedRubricRuleIds(callType).map((ruleId) => ({
+      ruleId,
+      finding: "no_relevant_evidence",
+      summary: "This rule was explicitly checked in this chunk.",
+    })),
+  };
+}
+
+function stagedProviderContent(body: Record<string, any>) {
+  const schemaName = body.response_format?.json_schema?.name;
+  if (schemaName === "beavermind_transcript_evidence_map") {
+    return mockEvidenceMap("kickoff");
+  }
+  if (schemaName === "beavermind_rule_audit") {
+    return {
+      decisions: orderedRubricRuleIds("kickoff").map((ruleId) => ({
+        ruleId,
+        triggered: false,
+        reasoning: "Every transcript interval was checked and the condition did not trigger.",
+        evidence: [],
+      })),
+    };
+  }
+  if (schemaName === "beavermind_dimension_score") {
+    const messages = JSON.stringify(body.messages);
+    const dimensionNumber = Number(
+      /Return dimensionNumber (\d+)/.exec(messages)?.[1]
+    );
+    const dimension = completedResult.dimensions[dimensionNumber - 1]!;
+    const definition = getRubricForCallType("kickoff").dimensions[
+      dimensionNumber - 1
+    ]!;
+    return {
+      bandAssessments: definition.scoring.scoreBands.map((band) => ({
+        label: band.label,
+        fullySupported: band.label === dimension.band,
+        reasoning:
+          band.label === dimension.band
+            ? "Every required clause is supported."
+            : "At least one required clause is not supported.",
+      })),
+      dimension,
+    };
+  }
+  if (schemaName === "beavermind_report_synthesis") {
+    return {
+      clientName: completedResult.clientName,
+      coachName: completedResult.coachName,
+      brief: completedResult.brief,
+      oneThing: {
+        title: completedResult.oneThing.title,
+        explanation: completedResult.oneThing.explanation,
+        potentialScore: completedResult.oneThing.potentialScore,
+        affectedDimensionNumbers:
+          completedResult.oneThing.affectedDimensionNumbers ?? [],
+      },
+      redFlags: completedResult.redFlags.map((flag) => ({
+        ...flag,
+        severity: flag.severity ?? "medium",
+      })),
+    };
+  }
+  throw new Error(`Unexpected provider schema ${schemaName}`);
+}
+
 test("Phase 2 validation accepts a contract-valid, rubric-grounded fixture", () => {
   const validated = validateEvaluationResult(completedResult, completedFixture);
 
-  assert.equal(validated.dimensions[11]!.score, 3.5);
-  assert.equal(validated.scoreSummary.rawScore, 89.5);
-  assert.equal(validated.scoreSummary.finalScore, 89.5);
+  assert.equal(validated.dimensions[11]!.score, 4);
+  assert.equal(validated.scoreSummary.rawScore, 92);
+  assert.equal(validated.scoreSummary.finalScore, 92);
+});
+
+test("Kick-off rubric can attain the full authored 100 points", () => {
+  const candidate = structuredClone(completedResult);
+  const rubric = getRubricForCallType("kickoff");
+  candidate.dimensions.forEach((dimension, index) => {
+    const topBand = rubric.dimensions[index]!.scoring.scoreBands[0]!;
+    dimension.score =
+      topBand.scoreKind === "anchor" ? topBand.score : topBand.maxScore;
+    dimension.band = topBand.label;
+  });
+
+  const validated = validateEvaluationResult(candidate, completedFixture);
+
+  assert.equal(validated.scoreSummary.rawScore, 100);
+  assert.equal(validated.scoreSummary.finalScore, 100);
+});
+
+test("an applied Coaching N/A rule cannot leave its dimension active", () => {
+  const coachingFixture = getEvaluationById("demo-completed-coaching");
+  assert.ok(coachingFixture?.result);
+  const candidate = structuredClone(coachingFixture.result);
+  candidate.appliedRules.push({
+    ruleId: "COACHING_D4_NO_MOVEMENT_COACHING",
+    label: "Movement Coaching Quality Not Applicable",
+    description: "All chunks were checked and no movement coaching occurred.",
+    scope: "applicability",
+    affectedDimensionNumber: 4,
+    effect: "Exclude 15 points and normalize to 100",
+  });
+
+  assert.throws(
+    () => validateEvaluationResult(candidate, coachingFixture),
+    (error: unknown) =>
+      error instanceof EvaluationOutputValidationError &&
+      error.issues.some((issue) => issue.includes("must be disabled"))
+  );
 });
 
 test("Phase 2 requires AI-identified client and coach names", () => {
@@ -167,7 +294,10 @@ test("Phase 2 rejects a model-only talk-ratio rule when speaker counts disprove 
     ),
     false
   );
-  assert.equal(validated.scoreSummary.finalScore, 89.5);
+  assert.equal(
+    validated.scoreSummary.finalScore,
+    validateEvaluationResult(completedResult, completedFixture).scoreSummary.finalScore
+  );
 });
 
 test("transcript metrics provide deterministic labelled-speaker shares", () => {
@@ -201,6 +331,47 @@ test("transcript parsing retains timestamps, continuation text, and source attri
   assert.equal(located?.timestamp, "00:01:12");
 });
 
+test("transcript parsing recognizes timestamped speaker headers without colons", () => {
+  const transcript = [
+    "00:00 - Marcus Vance",
+    "What felt hardest this week?",
+    "Jordan Hayes (00:08)",
+    "Staying consistent while traveling.",
+  ].join("\n");
+
+  const parsed = parseTranscript(transcript);
+
+  assert.equal(parsed.turns.length, 2);
+  assert.deepEqual(
+    parsed.turns.map(({ speaker, timestamp, text }) => ({ speaker, timestamp, text })),
+    [
+      {
+        speaker: "Marcus Vance",
+        timestamp: "00:00",
+        text: "What felt hardest this week?",
+      },
+      {
+        speaker: "Jordan Hayes",
+        timestamp: "00:08",
+        text: "Staying consistent while traveling.",
+      },
+    ]
+  );
+  assert.equal(parsed.attributionReliable, true);
+});
+
+test("Phase 2 retains evaluator attribution when a transcript has no speaker labels", () => {
+  const unlabelledTranscript = completedFixture.transcript.replace(/^[^:\r\n]+:\s*/gm, "");
+
+  const validated = validateEvaluationResult(completedResult, {
+    ...completedFixture,
+    transcript: unlabelledTranscript,
+  });
+
+  assert.equal(validated.dimensions[0]!.evidence[0]!.speaker, "Coach");
+  assert.equal(validated.dimensions[0]!.evidence[0]!.turnIndex, 0);
+});
+
 test("smart chunking stays turn-aligned and overlaps source turns", () => {
   const transcript = Array.from({ length: 12 }, (_, index) =>
     `${index % 2 === 0 ? "Coach" : "Client"}: turn ${index} ${"detail ".repeat(8)}`
@@ -215,43 +386,86 @@ test("smart chunking stays turn-aligned and overlaps source turns", () => {
   }
 });
 
+test("chunk evidence maps must explicitly audit every dimension and rule", () => {
+  const incomplete = {
+    chunkSummary: "Only a generic summary was returned.",
+    speakerRoles: [],
+    moments: [],
+    dimensionAudits: [],
+    ruleAudits: [],
+  };
+
+  assert.throws(() =>
+    validateEvidenceMapCoverage(incomplete, getRubricForCallType("kickoff"))
+  );
+  assert.doesNotThrow(() =>
+    validateEvidenceMapCoverage(
+      mockEvidenceMap("kickoff"),
+      getRubricForCallType("kickoff")
+    )
+  );
+});
+
 test("OpenRouter provider requests strict structured output and parses JSON", async () => {
   let capturedAuthorization = "";
-  let capturedBody: Record<string, unknown> | undefined;
+  const capturedBodies: Array<Record<string, any>> = [];
   const environment = getOpenRouterEnvironment({
     OPENROUTER_API_KEY: "openrouter-secret",
   });
   const provider = createOpenRouterProvider("anthropic/claude-sonnet-4.6", environment, async (_input, init) => {
     capturedAuthorization = new Headers(init?.headers).get("Authorization") ?? "";
-    capturedBody = JSON.parse(String(init?.body)) as Record<string, unknown>;
+    const body = JSON.parse(String(init?.body)) as Record<string, any>;
+    capturedBodies.push(body);
     return new Response(
       JSON.stringify({
         model: "anthropic/claude-sonnet-4.6",
-        choices: [
-          { message: { content: JSON.stringify(completedResult) } },
-        ],
+        choices: [{ message: { content: JSON.stringify(stagedProviderContent(body)) } }],
       }),
       { status: 200, headers: { "Content-Type": "application/json" } }
     );
   });
 
   const result = await provider.evaluate(processingRun);
+  const validated = validateEvaluationResult(result, processingRun);
+  const ruleBody = capturedBodies.find(
+    (body) => body.response_format?.json_schema?.name === "beavermind_rule_audit"
+  );
+  const reportBody = capturedBodies.find(
+    (body) => body.response_format?.json_schema?.name === "beavermind_report_synthesis"
+  );
 
-  assert.deepEqual(result, completedResult);
+  assert.deepEqual(
+    validated.dimensions.map(({ dimensionNumber, score, band }) => ({
+      dimensionNumber,
+      score,
+      band,
+    })),
+    completedResult.dimensions.map(({ dimensionNumber, score, band }) => ({
+      dimensionNumber,
+      score,
+      band,
+    }))
+  );
   assert.equal(capturedAuthorization, "Bearer openrouter-secret");
   assert.equal(
-    (capturedBody?.response_format as { type?: string })?.type,
+    ruleBody?.response_format?.type,
     "json_schema"
   );
-  assert.deepEqual(capturedBody?.provider, { require_parameters: true });
-  assert.equal(capturedBody?.temperature, 0);
+  assert.deepEqual(ruleBody?.provider, { require_parameters: true });
+  assert.equal(ruleBody?.temperature, 0);
   assert.match(
-    JSON.stringify(capturedBody?.messages),
+    JSON.stringify(ruleBody?.messages),
     /DETERMINISTIC TRANSCRIPT METRICS/
+  );
+  assert.equal(
+    capturedBodies.filter(
+      (body) => body.response_format?.json_schema?.name === "beavermind_dimension_score"
+    ).length,
+    12
   );
 
   const responseSchema = (
-    capturedBody?.response_format as {
+    reportBody?.response_format as {
       json_schema?: { schema?: Record<string, unknown> };
     }
   )?.json_schema?.schema;
@@ -290,6 +504,123 @@ test("OpenRouter provider requests strict structured output and parses JSON", as
   assert.deepEqual(unsupportedAnnotations, []);
 });
 
+test("independent dimension scoring retries a mismatched band audit once", async () => {
+  let injectedMismatch = false;
+  const requests: Array<Record<string, any>> = [];
+  const provider = createOpenRouterProvider(
+    "openai/gpt-5.6-sol",
+    getOpenRouterEnvironment({ OPENROUTER_API_KEY: "openrouter-secret" }),
+    async (_input, init) => {
+      const body = JSON.parse(String(init?.body)) as Record<string, any>;
+      requests.push(body);
+      let content: any = stagedProviderContent(body);
+      if (
+        !injectedMismatch &&
+        body.response_format?.json_schema?.name === "beavermind_dimension_score" &&
+        /Return dimensionNumber 1/.test(JSON.stringify(body.messages))
+      ) {
+        injectedMismatch = true;
+        content = {
+          ...content,
+          bandAssessments: content.bandAssessments.map((assessment: any) => ({
+            ...assessment,
+            fullySupported: false,
+          })),
+        };
+      }
+      return new Response(
+        JSON.stringify({
+          choices: [{ message: { content: JSON.stringify(content) } }],
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } }
+      );
+    }
+  );
+
+  const candidate = await provider.evaluate(processingRun);
+
+  assert.doesNotThrow(() => validateEvaluationResult(candidate, processingRun));
+  assert.equal(
+    requests.filter(
+      (request) =>
+        request.response_format?.json_schema?.name === "beavermind_dimension_score"
+    ).length,
+    13
+  );
+  assert.ok(
+    requests.some((request) =>
+      /failed deterministic stage validation/.test(JSON.stringify(request.messages))
+    )
+  );
+});
+
+test("OpenRouter provider recovers from a transient rate limit", async () => {
+  let attempts = 0;
+  const provider = createOpenRouterProvider(
+    "openai/gpt-5.6-sol",
+    getOpenRouterEnvironment({
+      OPENROUTER_API_KEY: "openrouter-secret",
+      OPENROUTER_REQUEST_RETRIES: "1",
+    }),
+    async (_input, init) => {
+      attempts += 1;
+      if (attempts === 1) {
+        return new Response(
+          JSON.stringify({ error: { code: "rate_limited", message: "Try again" } }),
+          {
+            status: 429,
+            headers: { "Content-Type": "application/json", "Retry-After": "0" },
+          }
+        );
+      }
+      const body = JSON.parse(String(init?.body)) as Record<string, any>;
+      return new Response(
+        JSON.stringify({
+          usage: { prompt_tokens: 10, completion_tokens: 5, total_tokens: 15, cost: 0.01 },
+          choices: [{ message: { content: JSON.stringify(stagedProviderContent(body)) } }],
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } }
+      );
+    }
+  );
+
+  const candidate = await provider.evaluate(processingRun);
+
+  assert.doesNotThrow(() => validateEvaluationResult(candidate, processingRun));
+  assert.equal(attempts, 15, "one retry plus the normal 14-stage pipeline");
+});
+
+test("narrative failures do not discard validated dimension scores", async () => {
+  let synthesisAttempts = 0;
+  const provider = createOpenRouterProvider(
+    "openai/gpt-5.6-sol",
+    getOpenRouterEnvironment({
+      OPENROUTER_API_KEY: "openrouter-secret",
+      OPENROUTER_REQUEST_RETRIES: "0",
+    }),
+    async (_input, init) => {
+      const body = JSON.parse(String(init?.body)) as Record<string, any>;
+      const isSynthesis =
+        body.response_format?.json_schema?.name === "beavermind_report_synthesis";
+      if (isSynthesis) synthesisAttempts += 1;
+      const content = isSynthesis ? {} : stagedProviderContent(body);
+      return new Response(
+        JSON.stringify({ choices: [{ message: { content: JSON.stringify(content) } }] }),
+        { status: 200, headers: { "Content-Type": "application/json" } }
+      );
+    }
+  );
+
+  const candidate = await provider.evaluate(processingRun);
+  const validated = validateEvaluationResult(candidate, processingRun);
+
+  assert.equal(synthesisAttempts, 2);
+  assert.equal(validated.scoreSummary.finalScore, completedResult.scoreSummary.finalScore);
+  assert.equal(validated.clientName, "David");
+  assert.equal(validated.coachName, "Sarah");
+  assert.match(validated.brief, /12 active rubric dimensions/);
+});
+
 test("large transcripts use chunk evidence maps and a compact final dossier", async () => {
   const longTranscript = Array.from({ length: 130 }, (_, index) =>
     `${index % 2 === 0 ? "Coach" : "Client"}: segment ${index} ${"context ".repeat(9)}${index === 129 ? "unique_final_marker" : ""}`
@@ -309,17 +640,7 @@ test("large transcripts use chunk evidence maps and a compact final dossier", as
     async (_input, init) => {
       const body = JSON.parse(String(init?.body)) as Record<string, any>;
       requests.push(body);
-      const schemaName = body.response_format?.json_schema?.name;
-      const content = schemaName === "beavermind_transcript_evidence_map"
-        ? {
-            chunkSummary: "This source interval was reviewed against every target.",
-            speakerRoles: [
-              { label: "Coach", role: "coach", personalName: null },
-              { label: "Client", role: "client", personalName: null },
-            ],
-            moments: [],
-          }
-        : completedResult;
+      const content = stagedProviderContent(body);
       return new Response(
         JSON.stringify({ choices: [{ message: { content: JSON.stringify(content) } }] }),
         { status: 200, headers: { "Content-Type": "application/json" } }
@@ -331,13 +652,22 @@ test("large transcripts use chunk evidence maps and a compact final dossier", as
   const mapRequests = requests.filter(
     (request) => request.response_format?.json_schema?.name === "beavermind_transcript_evidence_map"
   );
-  const finalRequest = requests.at(-1)!;
-  const finalMessages = JSON.stringify(finalRequest.messages);
+  const ruleRequest = requests.find(
+    (request) => request.response_format?.json_schema?.name === "beavermind_rule_audit"
+  )!;
+  const dimensionRequests = requests.filter(
+    (request) => request.response_format?.json_schema?.name === "beavermind_dimension_score"
+  );
+  const scoringMessages = JSON.stringify([
+    ruleRequest.messages,
+    ...dimensionRequests.map((request) => request.messages),
+  ]);
 
   assert.ok(mapRequests.length >= 3);
-  assert.equal(requests.length, mapRequests.length + 1);
-  assert.match(finalMessages, /LARGE-TRANSCRIPT EVIDENCE DOSSIER/);
-  assert.doesNotMatch(finalMessages, /unique_final_marker/);
+  assert.equal(dimensionRequests.length, 12);
+  assert.equal(requests.length, mapRequests.length + 14);
+  assert.match(scoringMessages, /MANDATORY PER-CHUNK/);
+  assert.doesNotMatch(scoringMessages, /unique_final_marker/);
 
   await provider.evaluate(run, { previousResult: completedResult, issues: ["test repair"] });
   assert.equal(
@@ -356,10 +686,11 @@ test("GPT-5.6 requests use a supported repeatability seed", async () => {
     getOpenRouterEnvironment({ OPENROUTER_API_KEY: "openrouter-secret" }),
     async (_input, init) => {
       capturedBody = JSON.parse(String(init?.body)) as Record<string, unknown>;
+      const body = capturedBody as Record<string, any>;
       return new Response(
         JSON.stringify({
           model: "openai/gpt-5.6-sol",
-          choices: [{ message: { content: JSON.stringify(completedResult) } }],
+          choices: [{ message: { content: JSON.stringify(stagedProviderContent(body)) } }],
         }),
         { status: 200, headers: { "Content-Type": "application/json" } }
       );
@@ -401,6 +732,7 @@ test("strict provider schema keeps the root object shape", () => {
 test("OpenRouter provider turns request timeouts into structured provider errors", async () => {
   const environment = getOpenRouterEnvironment({
     OPENROUTER_API_KEY: "openrouter-secret",
+    OPENROUTER_REQUEST_RETRIES: "0",
   });
   const provider = createOpenRouterProvider(
     "provider/model",

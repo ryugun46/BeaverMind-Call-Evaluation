@@ -55,7 +55,7 @@ export const OpenRouterModelSlugSchema = z
   );
 
 export const DEFAULT_EVALUATION_MODEL: EvaluationModelSlug =
-  "openai/gpt-4.1-mini";
+  "openai/gpt-5.6-sol";
 
 export const EVALUATION_MODEL_OPTIONS = evaluationModelSlugs.map((slug) => ({
   slug,

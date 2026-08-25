@@ -9,7 +9,7 @@ A high-credibility, evidence-grounded AI Call Quality Assurance evaluation platf
 - **Styling**: Tailwind CSS (Calm, light-first analytical theme)
 - **Icons**: Lucide React
 - **Persistence**: Supabase/Postgres with server-only repository access
-- **Evaluation**: Separate OpenRouter worker with structured output validation
+- **Evaluation**: Audited chunk evidence, an independent rule pass, 12 independent dimension scorers, and deterministic server aggregation through OpenRouter
 
 ---
 
